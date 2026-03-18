@@ -284,10 +284,3 @@ pytest tests/ -v
 
   * Check CORS
 
----
-
-## 🔹 Simple Explanation (Interview)
-
-👉 *“This system uses AI agents to analyze business process exceptions, automatically resolve low-risk issues, and route complex cases to humans, improving efficiency through continuous learning.”*
-
----
