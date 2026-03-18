@@ -1,0 +1,226 @@
+[
+  {
+    "id": "h001",
+    "case_id": "PO-2023-0001",
+    "exception_type": "payment_mismatch",
+    "actual_path": [
+      "PO Created",
+      "GR Posted",
+      "Invoice Received",
+      "Payment Blocked"
+    ],
+    "deviation_point": "Payment Blocked",
+    "financial_exposure": 82000,
+    "recommended_action": "three_way_match_recheck",
+    "was_approved": true
+  },
+  {
+    "id": "h002",
+    "case_id": "PO-2023-0002",
+    "exception_type": "payment_mismatch",
+    "actual_path": [
+      "PO Created",
+      "GR Posted",
+      "Invoice Received",
+      "Payment Blocked"
+    ],
+    "deviation_point": "Payment Blocked",
+    "financial_exposure": 91000,
+    "recommended_action": "three_way_match_recheck",
+    "was_approved": true
+  },
+  {
+    "id": "h003",
+    "case_id": "PO-2023-0003",
+    "exception_type": "payment_mismatch",
+    "actual_path": [
+      "PO Created",
+      "Invoice Received",
+      "GR Posted",
+      "Payment Blocked"
+    ],
+    "deviation_point": "Invoice Received",
+    "financial_exposure": 77000,
+    "recommended_action": "three_way_match_recheck",
+    "was_approved": true
+  },
+  {
+    "id": "h004",
+    "case_id": "PO-2023-0004",
+    "exception_type": "payment_mismatch",
+    "actual_path": [
+      "PO Created",
+      "GR Posted",
+      "Invoice Received",
+      "Payment Blocked"
+    ],
+    "deviation_point": "Payment Blocked",
+    "financial_exposure": 95000,
+    "recommended_action": "three_way_match_recheck",
+    "was_approved": false
+  },
+  {
+    "id": "h005",
+    "case_id": "PO-2023-0005",
+    "exception_type": "payment_mismatch",
+    "actual_path": [
+      "PO Created",
+      "GR Posted",
+      "Invoice Received",
+      "Payment Blocked"
+    ],
+    "deviation_point": "Payment Blocked",
+    "financial_exposure": 88000,
+    "recommended_action": "three_way_match_recheck",
+    "was_approved": true
+  },
+  {
+    "id": "h006",
+    "case_id": "PO-2023-0006",
+    "exception_type": "quantity_mismatch",
+    "actual_path": [
+      "PO Created",
+      "GR Posted",
+      "Quantity Discrepancy",
+      "Invoice Received"
+    ],
+    "deviation_point": "Quantity Discrepancy",
+    "financial_exposure": 12000,
+    "recommended_action": "adjust_quantity",
+    "was_approved": true
+  },
+  {
+    "id": "h007",
+    "case_id": "PO-2023-0007",
+    "exception_type": "quantity_mismatch",
+    "actual_path": [
+      "PO Created",
+      "GR Posted",
+      "Quantity Discrepancy",
+      "Manual Count"
+    ],
+    "deviation_point": "Quantity Discrepancy",
+    "financial_exposure": 8500,
+    "recommended_action": "adjust_quantity",
+    "was_approved": true
+  },
+  {
+    "id": "h008",
+    "case_id": "PO-2023-0008",
+    "exception_type": "quantity_mismatch",
+    "actual_path": [
+      "PO Created",
+      "GR Posted",
+      "Quantity Discrepancy"
+    ],
+    "deviation_point": "Quantity Discrepancy",
+    "financial_exposure": 15000,
+    "recommended_action": "adjust_quantity",
+    "was_approved": true
+  },
+  {
+    "id": "h009",
+    "case_id": "PO-2023-0009",
+    "exception_type": "invoice_mismatch",
+    "actual_path": [
+      "PO Created",
+      "GR Posted",
+      "Invoice Received",
+      "Invoice Mismatch"
+    ],
+    "deviation_point": "Invoice Mismatch",
+    "financial_exposure": 45000,
+    "recommended_action": "request_invoice_correction",
+    "was_approved": true
+  },
+  {
+    "id": "h010",
+    "case_id": "PO-2023-0010",
+    "exception_type": "invoice_mismatch",
+    "actual_path": [
+      "PO Created",
+      "GR Posted",
+      "Invoice Received",
+      "Invoice Mismatch",
+      "Vendor Contacted"
+    ],
+    "deviation_point": "Invoice Mismatch",
+    "financial_exposure": 52000,
+    "recommended_action": "request_invoice_correction",
+    "was_approved": false
+  },
+  {
+    "id": "h011",
+    "case_id": "PO-2023-0011",
+    "exception_type": "goods_receipt_mismatch",
+    "actual_path": [
+      "PO Created",
+      "GR Posted",
+      "GR Mismatch",
+      "Invoice Received"
+    ],
+    "deviation_point": "GR Mismatch",
+    "financial_exposure": 27000,
+    "recommended_action": "reverse_and_repost_gr",
+    "was_approved": true
+  },
+  {
+    "id": "h012",
+    "case_id": "PO-2023-0012",
+    "exception_type": "goods_receipt_mismatch",
+    "actual_path": [
+      "PO Created",
+      "GR Posted",
+      "GR Mismatch"
+    ],
+    "deviation_point": "GR Mismatch",
+    "financial_exposure": 33000,
+    "recommended_action": "reverse_and_repost_gr",
+    "was_approved": true
+  },
+  {
+    "id": "h013",
+    "case_id": "PO-2023-0013",
+    "exception_type": "tax_code_change",
+    "actual_path": [
+      "PO Created",
+      "GR Posted",
+      "Invoice Received",
+      "Tax Code Changed"
+    ],
+    "deviation_point": "Tax Code Changed",
+    "financial_exposure": 5000,
+    "recommended_action": "update_tax_code",
+    "was_approved": true
+  },
+  {
+    "id": "h014",
+    "case_id": "PO-2023-0014",
+    "exception_type": "tax_code_change",
+    "actual_path": [
+      "PO Created",
+      "Invoice Received",
+      "Tax Code Changed"
+    ],
+    "deviation_point": "Tax Code Changed",
+    "financial_exposure": 7200,
+    "recommended_action": "update_tax_code",
+    "was_approved": true
+  },
+  {
+    "id": "h015",
+    "case_id": "PO-2023-0015",
+    "exception_type": "payment_mismatch",
+    "actual_path": [
+      "PO Created",
+      "GR Posted",
+      "Invoice Received",
+      "Payment Blocked",
+      "Manual Review"
+    ],
+    "deviation_point": "Payment Blocked",
+    "financial_exposure": 79000,
+    "recommended_action": "three_way_match_recheck",
+    "was_approved": true
+  }
+]

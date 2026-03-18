@@ -1,0 +1,50 @@
+[
+  {
+    "category": "payment_mismatch",
+    "action_type": "three_way_match_recheck",
+    "action_params": {"tolerance_pct": 0.02},
+    "success_rate": 0.89,
+    "avg_resolution_time": 30,
+    "sample_size": 45
+  },
+  {
+    "category": "quantity_mismatch",
+    "action_type": "adjust_quantity",
+    "action_params": {"max_adjustment_pct": 0.05},
+    "success_rate": 0.92,
+    "avg_resolution_time": 15,
+    "sample_size": 60
+  },
+  {
+    "category": "invoice_mismatch",
+    "action_type": "request_invoice_correction",
+    "action_params": {"notify_vendor": true},
+    "success_rate": 0.78,
+    "avg_resolution_time": 120,
+    "sample_size": 38
+  },
+  {
+    "category": "goods_receipt_mismatch",
+    "action_type": "reverse_and_repost_gr",
+    "action_params": {"reversal_type": "full"},
+    "success_rate": 0.85,
+    "avg_resolution_time": 45,
+    "sample_size": 32
+  },
+  {
+    "category": "tax_code_change",
+    "action_type": "update_tax_code",
+    "action_params": {"retroactive": false},
+    "success_rate": 0.95,
+    "avg_resolution_time": 10,
+    "sample_size": 50
+  },
+  {
+    "category": "novel_exception",
+    "action_type": "escalate_to_human",
+    "action_params": {},
+    "success_rate": 1.0,
+    "avg_resolution_time": 240,
+    "sample_size": 15
+  }
+]

@@ -1,0 +1,17 @@
+{
+    "mcpServers": {
+        "slack": {
+            "command": "npx",
+            "args": ["-y", "@modelcontextprotocol/server-slack"],
+            "transport": "stdio",
+            "env": {
+                "SLACK_BOT_TOKEN": "${SLACK_BOT_TOKEN}"
+            }
+        },
+        "gmail": {
+            "command": "npx",
+            "args": ["-y", "@gongrzhe/server-gmail-autoauth-mcp"],
+            "transport": "stdio"
+        }
+    }
+}

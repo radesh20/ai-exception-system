@@ -1,0 +1,165 @@
+{
+  "cases": [
+    {
+      "description": "Case 1 - Payment mismatch high exposure routes to HUMAN",
+      "case_id": "PO-2024-0001",
+      "event_log": [
+        {"activity": "PO Created", "timestamp": "2024-01-01T08:00:00", "resource": "buyer_01"},
+        {"activity": "GR Posted", "timestamp": "2024-01-15T10:00:00", "resource": "warehouse_02"},
+        {"activity": "Invoice Received", "timestamp": "2024-01-16T09:00:00", "resource": "ap_team"},
+        {"activity": "Payment Blocked", "timestamp": "2024-01-17T08:00:00", "resource": "system"}
+      ],
+      "exception_alert": {
+        "type": "payment_mismatch",
+        "triggered_at": "2024-01-17T08:00:00",
+        "financial_value": 85000.00
+      },
+      "process_variants": [
+        {"path": ["PO Created", "GR Posted", "Invoice Received", "Payment"], "frequency": 0.72},
+        {"path": ["PO Created", "Invoice Received", "GR Posted", "Payment"], "frequency": 0.18},
+        {"path": ["PO Created", "GR Posted", "Invoice Received", "Payment Blocked", "Manual Review", "Payment"], "frequency": 0.10}
+      ],
+      "metadata": {
+        "vendor": "Vendor_ABC",
+        "po_value": 85000.00,
+        "sla_hours": 48,
+        "assigned_team": "AP_Team_1",
+        "compliance_flag": false
+      }
+    },
+    {
+      "description": "Case 2 - Quantity mismatch low exposure AUTO route",
+      "case_id": "PO-2024-0002",
+      "event_log": [
+        {"activity": "PO Created", "timestamp": "2024-02-01T09:00:00", "resource": "buyer_02"},
+        {"activity": "GR Posted", "timestamp": "2024-02-10T14:00:00", "resource": "warehouse_01"},
+        {"activity": "Quantity Discrepancy", "timestamp": "2024-02-10T15:00:00", "resource": "system"},
+        {"activity": "Invoice Received", "timestamp": "2024-02-11T10:00:00", "resource": "ap_team"}
+      ],
+      "exception_alert": {
+        "type": "quantity_mismatch",
+        "triggered_at": "2024-02-10T15:00:00",
+        "financial_value": 12000.00
+      },
+      "process_variants": [
+        {"path": ["PO Created", "GR Posted", "Invoice Received", "Payment"], "frequency": 0.80},
+        {"path": ["PO Created", "GR Posted", "Quantity Discrepancy", "Invoice Received", "Payment"], "frequency": 0.15},
+        {"path": ["PO Created", "GR Posted", "Quantity Discrepancy", "Manual Count", "Payment"], "frequency": 0.05}
+      ],
+      "metadata": {
+        "vendor": "Vendor_XYZ",
+        "po_value": 12000.00,
+        "sla_hours": 72,
+        "assigned_team": "AP_Team_2",
+        "compliance_flag": false
+      }
+    },
+    {
+      "description": "Case 3 - Novel exception compliance flag routes to HUMAN",
+      "case_id": "PO-2024-0003",
+      "event_log": [
+        {"activity": "PO Created", "timestamp": "2024-03-01T08:00:00", "resource": "buyer_03"},
+        {"activity": "Vendor Hold", "timestamp": "2024-03-02T10:00:00", "resource": "system"},
+        {"activity": "Compliance Review", "timestamp": "2024-03-03T11:00:00", "resource": "compliance_team"},
+        {"activity": "Payment Suspended", "timestamp": "2024-03-04T09:00:00", "resource": "system"}
+      ],
+      "exception_alert": {
+        "type": "vendor_compliance_block",
+        "triggered_at": "2024-03-04T09:00:00",
+        "financial_value": 200000.00
+      },
+      "process_variants": [
+        {"path": ["PO Created", "GR Posted", "Invoice Received", "Payment"], "frequency": 0.85},
+        {"path": ["PO Created", "GR Posted", "Invoice Received", "Payment Blocked", "Payment"], "frequency": 0.15}
+      ],
+      "metadata": {
+        "vendor": "Vendor_RISK",
+        "po_value": 200000.00,
+        "sla_hours": 24,
+        "assigned_team": "Compliance_Team",
+        "compliance_flag": true
+      }
+    },
+    {
+      "description": "Case 4 - Invoice mismatch medium exposure routes to HUMAN",
+      "case_id": "PO-2024-0004",
+      "event_log": [
+        {"activity": "PO Created", "timestamp": "2024-04-01T08:00:00", "resource": "buyer_04"},
+        {"activity": "GR Posted", "timestamp": "2024-04-05T09:00:00", "resource": "warehouse_03"},
+        {"activity": "Invoice Received", "timestamp": "2024-04-06T10:00:00", "resource": "ap_team"},
+        {"activity": "Invoice Mismatch", "timestamp": "2024-04-06T11:00:00", "resource": "system"},
+        {"activity": "Vendor Contacted", "timestamp": "2024-04-07T09:00:00", "resource": "ap_team"}
+      ],
+      "exception_alert": {
+        "type": "invoice_mismatch",
+        "triggered_at": "2024-04-06T11:00:00",
+        "financial_value": 67000.00
+      },
+      "process_variants": [
+        {"path": ["PO Created", "GR Posted", "Invoice Received", "Payment"], "frequency": 0.75},
+        {"path": ["PO Created", "GR Posted", "Invoice Received", "Invoice Mismatch", "Corrected Invoice", "Payment"], "frequency": 0.20},
+        {"path": ["PO Created", "GR Posted", "Invoice Received", "Invoice Mismatch", "Vendor Contacted", "Payment"], "frequency": 0.05}
+      ],
+      "metadata": {
+        "vendor": "Vendor_DEF",
+        "po_value": 67000.00,
+        "sla_hours": 48,
+        "assigned_team": "AP_Team_3",
+        "compliance_flag": false
+      }
+    },
+    {
+      "description": "Case 5 - Tax code change low value AUTO route",
+      "case_id": "PO-2024-0005",
+      "event_log": [
+        {"activity": "PO Created", "timestamp": "2024-05-01T08:00:00", "resource": "buyer_05"},
+        {"activity": "GR Posted", "timestamp": "2024-05-03T10:00:00", "resource": "warehouse_01"},
+        {"activity": "Invoice Received", "timestamp": "2024-05-04T09:00:00", "resource": "ap_team"},
+        {"activity": "Tax Code Changed", "timestamp": "2024-05-04T10:00:00", "resource": "system"}
+      ],
+      "exception_alert": {
+        "type": "tax_code_change",
+        "triggered_at": "2024-05-04T10:00:00",
+        "financial_value": 5500.00
+      },
+      "process_variants": [
+        {"path": ["PO Created", "GR Posted", "Invoice Received", "Payment"], "frequency": 0.88},
+        {"path": ["PO Created", "GR Posted", "Invoice Received", "Tax Code Changed", "Payment"], "frequency": 0.12}
+      ],
+      "metadata": {
+        "vendor": "Vendor_GHI",
+        "po_value": 5500.00,
+        "sla_hours": 72,
+        "assigned_team": "Tax_Team",
+        "compliance_flag": false
+      }
+    },
+    {
+      "description": "Case 6 - Goods receipt mismatch medium exposure",
+      "case_id": "PO-2024-0006",
+      "event_log": [
+        {"activity": "PO Created", "timestamp": "2024-06-01T08:00:00", "resource": "buyer_01"},
+        {"activity": "GR Posted", "timestamp": "2024-06-05T14:00:00", "resource": "warehouse_02"},
+        {"activity": "GR Mismatch", "timestamp": "2024-06-05T15:00:00", "resource": "system"},
+        {"activity": "Manual Review", "timestamp": "2024-06-06T09:00:00", "resource": "warehouse_02"}
+      ],
+      "exception_alert": {
+        "type": "goods_receipt_mismatch",
+        "triggered_at": "2024-06-05T15:00:00",
+        "financial_value": 43000.00
+      },
+      "process_variants": [
+        {"path": ["PO Created", "GR Posted", "Invoice Received", "Payment"], "frequency": 0.78},
+        {"path": ["PO Created", "GR Posted", "GR Mismatch", "GR Corrected", "Invoice Received", "Payment"], "frequency": 0.17},
+        {"path": ["PO Created", "GR Posted", "GR Mismatch", "Manual Review", "Payment"], "frequency": 0.05}
+      ],
+      "metadata": {
+        "vendor": "Vendor_JKL",
+        "po_value": 43000.00,
+        "sla_hours": 48,
+        "assigned_team": "Warehouse_Team",
+        "compliance_flag": false
+      }
+    }
+  ]
+}

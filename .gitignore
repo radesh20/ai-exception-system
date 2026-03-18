@@ -1,0 +1,40 @@
+# Environment
+.env
+*.env.local
+.env.*
+
+# Python
+__pycache__/
+*.py[cod]
+*.so
+venv/
+.venv/
+*.egg-info/
+dist/
+build/
+
+# Storage
+data/db/*.json
+data/db/*.db
+data/db/*.sqlite
+!data/db/.gitkeep
+
+# Node
+node_modules/
+frontend/build/
+frontend/dist/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Test
+.pytest_cache/
+htmlcov/
+.coverage
+
+# OS
+.DS_Store
+Thumbs.db
