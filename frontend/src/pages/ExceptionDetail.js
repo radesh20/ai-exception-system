@@ -110,6 +110,15 @@ export default function ExceptionDetail() {
           </Card>
         )}
 
+        {data.erp_recommendation && (
+          <ErpCard
+            exceptionId={data.id}
+            erp={data.erp_recommendation}
+            status={data.erp_execution_status}
+            onUpdate={load}
+          />
+        )}
+
         {data.decisions?.length > 0 && (
           <Card title="Decision History">
             {data.decisions.map(d => (
@@ -147,6 +156,91 @@ export default function ExceptionDetail() {
 
 function Card({ title, children }) {
   return <div className="detail-card"><h3>{title}</h3>{children}</div>;
+}
+
+function ErpCard({ exceptionId, erp, status, onUpdate }) {
+  const [busy, setBusy] = React.useState(false);
+  const [msg, setMsg] = React.useState('');
+  const [analyst, setAnalyst] = React.useState('');
+
+  const handleApprove = async () => {
+    if (!analyst.trim()) { setMsg('Please enter your name before approving.'); return; }
+    setBusy(true);
+    setMsg('');
+    try {
+      await api.approveErpAction(exceptionId, { analyst_name: analyst });
+      setMsg('ERP action approved.');
+      onUpdate();
+    } catch (e) {
+      setMsg('Failed to approve ERP action.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleReject = async () => {
+    if (!analyst.trim()) { setMsg('Please enter your name before rejecting.'); return; }
+    setBusy(true);
+    setMsg('');
+    try {
+      await api.rejectErpAction(exceptionId, { analyst_name: analyst });
+      setMsg('ERP action rejected.');
+      onUpdate();
+    } catch (e) {
+      setMsg('Failed to reject ERP action.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const statusColor = { pending: '#D97706', approved: '#0D9488', rejected: '#DC2626', executed: '#6366F1' };
+  const color = statusColor[status] || '#6B7280';
+
+  return (
+    <Card title="ERP Action Required">
+      <table className="kv-table"><tbody>
+        <tr><td className="kv-key">System</td><td>{erp.system || 'SAP'}</td></tr>
+        <tr><td className="kv-key">Transaction</td><td><strong>{erp.transaction}</strong></td></tr>
+        <tr><td className="kv-key">Description</td><td>{erp.description}</td></tr>
+        <tr><td className="kv-key">Estimated Impact</td><td>{erp.estimated_impact}</td></tr>
+        <tr><td className="kv-key">Approval Required</td><td>{erp.requires_approval ? 'Yes' : 'No'}</td></tr>
+        <tr>
+          <td className="kv-key">Status</td>
+          <td><span style={{ color, fontWeight: 600, textTransform: 'capitalize' }}>{status || 'pending'}</span></td>
+        </tr>
+      </tbody></table>
+      {status === 'pending' && (
+        <div style={{ marginTop: '12px' }}>
+          <input
+            type="text"
+            placeholder="Your name"
+            value={analyst}
+            onChange={e => setAnalyst(e.target.value)}
+            style={{ display: 'block', marginBottom: '8px', padding: '4px 8px', borderRadius: 4, border: '1px solid #ccc', width: '200px' }}
+          />
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button
+              className="btn btn-primary"
+              onClick={handleApprove}
+              disabled={busy}
+              style={{ background: '#0D9488', color: '#fff', border: 'none', padding: '6px 14px', borderRadius: 4, cursor: 'pointer' }}
+            >
+              Approve ERP Action
+            </button>
+            <button
+              className="btn btn-secondary"
+              onClick={handleReject}
+              disabled={busy}
+              style={{ background: '#DC2626', color: '#fff', border: 'none', padding: '6px 14px', borderRadius: 4, cursor: 'pointer' }}
+            >
+              Reject ERP Action
+            </button>
+          </div>
+        </div>
+      )}
+      {msg && <div style={{ marginTop: '8px', fontSize: '13px', color: '#6B7280' }}>{msg}</div>}
+    </Card>
+  );
 }
 
 function PathRow({ label, steps = [], deviation, happy }) {

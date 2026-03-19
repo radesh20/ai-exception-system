@@ -51,6 +51,15 @@ const api = {
   getPolicyPerf:       () => req('/api/learning/policies'),
   getLearningHistory:  () => req('/api/learning/history'),
 
+  // ERP Actions
+  getErpRecommendation: (id) => req(`/api/exceptions/${id}/erp-recommendation`),
+  approveErpAction: (id, data = {}) => req(`/api/exceptions/${id}/erp-approve`, {
+    method: 'POST', body: JSON.stringify(data)
+  }),
+  rejectErpAction: (id, data = {}) => req(`/api/exceptions/${id}/erp-reject`, {
+    method: 'POST', body: JSON.stringify(data)
+  }),
+
   // Agent Trace
   getTrace:      (id) => req(`/api/exceptions/${id}/trace`),
 

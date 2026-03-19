@@ -55,7 +55,9 @@ class ExceptionModel:
     def __init__(self, id="", status=ExceptionStatus.NEW, context=None,
                  root_cause=None, classification=None, recommended_action=None,
                  recommended_action_params=None, ai_reasoning="",
-                 created_at="", updated_at=""):
+                 created_at="", updated_at="",
+                 prompt_package=None, erp_recommendation=None,
+                 erp_execution_status=None):
         self.id = id or str(uuid.uuid4())
         self.status = status
         self.context = context
@@ -66,6 +68,9 @@ class ExceptionModel:
         self.ai_reasoning = ai_reasoning
         self.created_at = created_at or datetime.now().isoformat()
         self.updated_at = updated_at or datetime.now().isoformat()
+        self.prompt_package = prompt_package  # Dict: AI-generated prompts used
+        self.erp_recommendation = erp_recommendation  # Dict: suggested ERP action
+        self.erp_execution_status = erp_execution_status  # "pending"/"approved"/"rejected"/"executed"
 
     def to_dict(self):
         return {
@@ -79,6 +84,9 @@ class ExceptionModel:
             "ai_reasoning": self.ai_reasoning,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
+            "prompt_package": self.prompt_package,
+            "erp_recommendation": self.erp_recommendation,
+            "erp_execution_status": self.erp_execution_status,
         }
 
     @classmethod
@@ -118,4 +126,8 @@ class ExceptionModel:
             recommended_action=d.get("recommended_action"),
             recommended_action_params=d.get("recommended_action_params", {}),
             ai_reasoning=d.get("ai_reasoning", ""),
-            created_at=d.get("created_at", ""), updated_at=d.get("updated_at", ""))
+            created_at=d.get("created_at", ""), updated_at=d.get("updated_at", ""),
+            prompt_package=d.get("prompt_package"),
+            erp_recommendation=d.get("erp_recommendation"),
+            erp_execution_status=d.get("erp_execution_status"),
+        )

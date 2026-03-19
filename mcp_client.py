@@ -68,10 +68,10 @@ class MCPClient:
             recommendation: str,
             financial_exposure: float = 0,
             exception_uuid: str = "",
+            erp_recommendation: dict = None,
     ) -> Dict[str, Any]:
         """Send Teams notification."""
-        return self.invoke(
-            "notify_procurement_team",
+        kwargs = dict(
             case_id=case_id,
             issue=issue,
             priority=priority,
@@ -79,6 +79,9 @@ class MCPClient:
             financial_exposure=financial_exposure,
             exception_uuid=exception_uuid,
         )
+        if erp_recommendation:
+            kwargs["erp_recommendation"] = erp_recommendation
+        return self.invoke("notify_procurement_team", **kwargs)
 
     def send_teams_alert(self, message: str) -> Dict[str, Any]:
         """Send simple Teams alert."""
