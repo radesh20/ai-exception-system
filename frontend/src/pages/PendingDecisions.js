@@ -54,7 +54,7 @@ export default function PendingDecisions({ onDecision }) {
       {pending.length === 0 ? (
         <div className="success-state">
           <div className="success-icon">
-            <CheckCircle size={48} strokeWidth={1.5} color="#34d399" />
+            <CheckCircle size={48} strokeWidth={1.5} color="#0D9488" />
           </div>
           <h2>All Caught Up!</h2>
           <p>No exceptions waiting for human review.</p>

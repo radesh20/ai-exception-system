@@ -161,7 +161,7 @@ function PathRow({ label, steps = [], deviation, happy }) {
 
 function ConfBar({ confidence }) {
   const pct = Math.round(confidence * 100);
-  const color = pct >= 70 ? '#34d399' : pct >= 40 ? '#fbbf24' : '#f87171';
+  const color = pct >= 70 ? '#0D9488' : pct >= 40 ? '#D97706' : '#DC2626';
   return (
     <div className="conf-row">
       <div className="conf-bar">

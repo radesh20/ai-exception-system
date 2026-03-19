@@ -3,15 +3,15 @@ import { Zap } from 'lucide-react';
 import api from '../api';
 
 const COLORS = {
-  completed: '#34d399', failed: '#f87171',
-  pending: '#fbbf24', executing: '#60a5fa', rolled_back: '#6b7280',
+  completed: '#0D9488', failed: '#DC2626',
+  pending: '#D97706', executing: '#2563EB', rolled_back: '#6B7280',
 };
 
 export default function ActionHistory() {
   const [actions, setActions] = useState([]);
 
   useEffect(() => {
-    api.getActions().then(d => { if (Array.isArray(d)) setActions(d); }).catch(() => { });
+    api.getActions().then(d => { if (Array.isArray(d)) setActions(d); }).catch(() => {});
   }, []);
 
   // Compute status counts
@@ -38,15 +38,15 @@ export default function ActionHistory() {
           <span className="inline-stat-label">Total</span>
         </div>
         <div className="inline-stat">
-          <span className="inline-stat-value" style={{ color: 'var(--green)' }}>{statusCounts['completed'] || 0}</span>
+          <span className="inline-stat-value" style={{ color: '#0D9488' }}>{statusCounts['completed'] || 0}</span>
           <span className="inline-stat-label">Completed</span>
         </div>
         <div className="inline-stat">
-          <span className="inline-stat-value" style={{ color: 'var(--red)' }}>{statusCounts['failed'] || 0}</span>
+          <span className="inline-stat-value" style={{ color: '#DC2626' }}>{statusCounts['failed'] || 0}</span>
           <span className="inline-stat-label">Failed</span>
         </div>
         <div className="inline-stat">
-          <span className="inline-stat-value" style={{ color: 'var(--yellow)' }}>{statusCounts['pending'] || 0}</span>
+          <span className="inline-stat-value" style={{ color: '#D97706' }}>{statusCounts['pending'] || 0}</span>
           <span className="inline-stat-label">Pending</span>
         </div>
       </div>
@@ -75,7 +75,7 @@ export default function ActionHistory() {
                   <tr key={a.id}>
                     <td className="mono">{(a.exception_id || '').slice(0, 12)}...</td>
                     <td>{(a.action_type || '').replace(/_/g, ' ')}</td>
-                    <td><span className="status-dot" style={{ color: COLORS[a.status] }}>{a.status}</span></td>
+                    <td><span className="status-dot" style={{color: COLORS[a.status]}}>{a.status}</span></td>
                     <td><span className={`target-badge target-${a.execution_target}`}>{a.execution_target}</span></td>
                     <td>{a.executed_by}</td>
                     <td>{a.result?.message || a.result?.error || '—'}</td>

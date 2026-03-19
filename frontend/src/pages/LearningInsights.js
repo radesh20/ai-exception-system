@@ -3,24 +3,24 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 
 import { AlertTriangle, BookOpen } from 'lucide-react';
 import api from '../api';
 
-const COLORS = ['#6366f1', '#34d399', '#fbbf24', '#f87171', '#22d3ee', '#6b7280'];
+const COLORS = ['#2563EB', '#0D9488', '#D97706', '#DC2626', '#7C3AED', '#6B7280'];
 
 export default function LearningInsights() {
   const [insights, setInsights] = useState(null);
   const [policies, setPolicies] = useState([]);
 
   useEffect(() => {
-    api.getLearning().then(d => { if (d) setInsights(d); }).catch(() => { });
-    api.getPolicyPerf().then(d => { if (Array.isArray(d)) setPolicies(d); }).catch(() => { });
+    api.getLearning().then(d => { if (d) setInsights(d); }).catch(() => {});
+    api.getPolicyPerf().then(d => { if (Array.isArray(d)) setPolicies(d); }).catch(() => {});
   }, []);
 
   const catData = insights
     ? Object.entries(insights.by_category || {}).map(([cat, s]) => ({
-      name: cat.replace(/_/g, ' '),
-      approved: s.approved || 0,
-      rejected: s.rejected || 0,
-      rate: s.total > 0 ? Math.round((s.approved / s.total) * 100) : 0,
-    }))
+        name: cat.replace(/_/g, ' '),
+        approved: s.approved || 0,
+        rejected: s.rejected || 0,
+        rate: s.total > 0 ? Math.round((s.approved / s.total) * 100) : 0,
+      }))
     : [];
 
   return (
@@ -55,9 +55,9 @@ export default function LearningInsights() {
             <div className="section-card-body">
               <ResponsiveContainer width="100%" height={250}>
                 <BarChart data={catData}>
-                  <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#6b7280' }} axisLine={{ stroke: '#1f1f23' }} tickLine={false} />
-                  <YAxis unit="%" domain={[0, 100]} tick={{ fontSize: 11, fill: '#6b7280' }} axisLine={{ stroke: '#1f1f23' }} tickLine={false} />
-                  <Tooltip formatter={v => `${v}%`} contentStyle={{ background: '#1a1a1f', border: '1px solid #1f1f23', borderRadius: '8px', fontSize: '12px' }} />
+                  <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#6B7280' }} axisLine={{ stroke: '#E2E6ED' }} tickLine={false} />
+                  <YAxis unit="%" domain={[0, 100]} tick={{ fontSize: 11, fill: '#6B7280' }} axisLine={{ stroke: '#E2E6ED' }} tickLine={false} />
+                  <Tooltip formatter={v => `${v}%`} contentStyle={{ background: '#FFFFFF', border: '1px solid #E2E6ED', borderRadius: '8px', fontSize: '12px' }} />
                   <Bar dataKey="rate" radius={[4, 4, 0, 0]}>
                     {catData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                   </Bar>
@@ -88,7 +88,7 @@ export default function LearningInsights() {
                         <div className="mini-bar">
                           <div><div className="mini-fill" style={{
                             width: `${p.success_rate || 0}%`,
-                            background: (p.success_rate || 0) >= 80 ? '#34d399' : '#fbbf24'
+                            background: (p.success_rate || 0) >= 80 ? '#0D9488' : '#D97706'
                           }} /></div>
                           <span>{p.success_rate || 0}%</span>
                         </div>
@@ -102,7 +102,7 @@ export default function LearningInsights() {
             </div>
           ) : (
             <div className="section-card-body">
-              <div style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)', fontSize: '13px' }}>
+              <div style={{ textAlign: 'center', padding: '24px', color: '#6B7280', fontSize: '13px' }}>
                 <BookOpen size={20} style={{ marginBottom: '8px', opacity: 0.5 }} />
                 <div>No policy data yet</div>
               </div>
