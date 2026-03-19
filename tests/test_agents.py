@@ -45,5 +45,5 @@ class TestRecommender:
         ctx = ContextBuilderAgent().build(sample_raw)
         from models import Classification
         cls = Classification("novel", 3, True, "human", 0.3)
-        a, _, _ = ActionRecommenderAgent().recommend(ctx, cls, [])
+        a, _, _, erp = ActionRecommenderAgent().recommend(ctx, cls, [])
         assert a == "escalate_to_human"

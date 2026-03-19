@@ -57,3 +57,119 @@ def submit_decision(req: DecisionRequest):
 @router.get("/decisions")
 def list_decisions(limit: int = 50):
     return [d.to_dict() for d in get_store().list_decisions(limit=limit)]
+
+
+# ── ERP Action Endpoints ──────────────────────────────────────────────────────
+
+class ErpDecisionRequest(BaseModel):
+    analyst_name: str = "analyst"
+    notes: str = ""
+
+@router.get("/exceptions/{exception_id}/erp-recommendation")
+def get_erp_recommendation(exception_id: str):
+    """Return the ERP recommendation stored on an exception."""
+    store = get_store()
+    exc = store.get_exception(exception_id)
+    if not exc:
+        return {"error": "Exception not found"}
+    return {
+        "exception_id": exception_id,
+        "erp_recommendation": exc.erp_recommendation,
+        "erp_execution_status": exc.erp_execution_status,
+    }
+
+@router.post("/exceptions/{exception_id}/erp-approve")
+def approve_erp_action(exception_id: str, req: ErpDecisionRequest = ErpDecisionRequest()):
+    """Human approves the ERP recommendation for this exception."""
+    store = get_store()
+    exc = store.get_exception(exception_id)
+    if not exc:
+        return {"error": "Exception not found"}
+    if not exc.erp_recommendation:
+        return {"error": "No ERP recommendation found for this exception"}
+
+    exc.erp_execution_status = "approved"
+    exc.updated_at = datetime.now().isoformat()
+    store.update_exception(exc)
+
+    # Record feedback via learning engine
+    try:
+        decision = Decision(
+            id="",
+            exception_id=exception_id,
+            decision_type=DecisionType("approved"),
+            analyst_name=req.analyst_name,
+            notes=f"ERP action approved. {req.notes}".strip(),
+            original_recommendation=exc.recommended_action or "",
+            final_action=exc.erp_recommendation.get("transaction", ""),
+        )
+        store.save_decision(decision)
+        LearningEngine(store).record_feedback(decision)
+    except Exception:
+        pass
+
+    # Send Teams notification
+    try:
+        erp = exc.erp_recommendation
+        msg = (
+            f"ERP action approved by {req.analyst_name}. "
+            f"Transaction: {erp.get('transaction')} ({erp.get('system', 'SAP')}). "
+            f"Ready for execution when ERP access available."
+        )
+        NotificationManager().notify_decision(exception_id, msg, req.analyst_name)
+    except Exception:
+        pass
+
+    return {
+        "exception_id": exception_id,
+        "erp_execution_status": exc.erp_execution_status,
+        "erp_recommendation": exc.erp_recommendation,
+        "message": f"ERP action approved by {req.analyst_name}.",
+    }
+
+@router.post("/exceptions/{exception_id}/erp-reject")
+def reject_erp_action(exception_id: str, req: ErpDecisionRequest = ErpDecisionRequest()):
+    """Human rejects the ERP recommendation for this exception."""
+    store = get_store()
+    exc = store.get_exception(exception_id)
+    if not exc:
+        return {"error": "Exception not found"}
+    if not exc.erp_recommendation:
+        return {"error": "No ERP recommendation found for this exception"}
+
+    exc.erp_execution_status = "rejected"
+    exc.updated_at = datetime.now().isoformat()
+    store.update_exception(exc)
+
+    # Record feedback via learning engine
+    try:
+        decision = Decision(
+            id="",
+            exception_id=exception_id,
+            decision_type=DecisionType("rejected"),
+            analyst_name=req.analyst_name,
+            notes=f"ERP action rejected. {req.notes}".strip(),
+            original_recommendation=exc.recommended_action or "",
+            final_action="",
+        )
+        store.save_decision(decision)
+        LearningEngine(store).record_feedback(decision)
+    except Exception:
+        pass
+
+    # Send Teams notification
+    try:
+        NotificationManager().notify_decision(
+            exception_id,
+            f"ERP action rejected by {req.analyst_name}. Alternative action required.",
+            req.analyst_name,
+        )
+    except Exception:
+        pass
+
+    return {
+        "exception_id": exception_id,
+        "erp_execution_status": exc.erp_execution_status,
+        "erp_recommendation": exc.erp_recommendation,
+        "message": f"ERP action rejected by {req.analyst_name}. Alternative action required.",
+    }

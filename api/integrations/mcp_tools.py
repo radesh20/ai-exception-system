@@ -26,6 +26,7 @@ class TeamsTools:
             recommendation: str,
             financial_exposure: float = 0,
             exception_uuid: str = "",
+            erp_recommendation: dict = None,
     ) -> Dict[str, Any]:
         """
         Tool: Send notification to procurement team via Teams.
@@ -36,6 +37,8 @@ class TeamsTools:
             priority: Priority level 1-5
             recommendation: Recommended action
             financial_exposure: Financial impact in dollars
+            exception_uuid: Internal exception UUID
+            erp_recommendation: Optional ERP action dict
 
         Returns:
             Status of notification
@@ -60,6 +63,46 @@ class TeamsTools:
                 4: "🔴",
                 5: "🔴",
             }.get(priority, "🔴")
+
+            # Core facts
+            core_facts = [
+                {"name": "📋 Case ID", "value": case_id},
+                {"name": "⚠️ Issue", "value": issue},
+                {"name": "💰 Financial Exposure", "value": f"${financial_exposure:,.2f}"},
+                {"name": "✅ Recommended Action", "value": recommendation},
+            ]
+
+            # ERP section facts (appended when available)
+            if erp_recommendation:
+                erp_tx = erp_recommendation.get("transaction", "")
+                erp_system = erp_recommendation.get("system", "SAP")
+                erp_desc = erp_recommendation.get("description", "")
+                erp_impact = erp_recommendation.get("estimated_impact", "")
+                core_facts += [
+                    {"name": "🏭 ERP Action", "value": f"{erp_system} Transaction {erp_tx}"},
+                    {"name": "📝 ERP Steps", "value": erp_desc},
+                    {"name": "💡 Estimated Impact", "value": erp_impact},
+                    {"name": "⚡ ERP Status", "value": "Pending Approval"},
+                ]
+
+            # Action buttons
+            dashboard_url = f"http://localhost:3000/exception/{exception_uuid or case_id}"
+            actions = [
+                {
+                    "type": "Action.OpenUrl",
+                    "title": "📊 Review in Dashboard",
+                    "url": dashboard_url,
+                    "style": "positive",
+                },
+            ]
+            if erp_recommendation:
+                erp_approve_url = f"http://localhost:3000/exception/{exception_uuid or case_id}"
+                actions.append({
+                    "type": "Action.OpenUrl",
+                    "title": "🏭 Approve ERP Action",
+                    "url": erp_approve_url,
+                    "style": "positive",
+                })
 
             card = {
                 "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
@@ -94,24 +137,7 @@ class TeamsTools:
                         "items": [
                             {
                                 "type": "FactSet",
-                                "facts": [
-                                    {
-                                        "name": "📋 Case ID",
-                                        "value": case_id,
-                                    },
-                                    {
-                                        "name": "⚠️ Issue",
-                                        "value": issue,
-                                    },
-                                    {
-                                        "name": "💰 Financial Exposure",
-                                        "value": f"${financial_exposure:,.2f}",
-                                    },
-                                    {
-                                        "name": "✅ Recommended Action",
-                                        "value": recommendation,
-                                    },
-                                ],
+                                "facts": core_facts,
                             },
                         ],
                     },
@@ -121,15 +147,7 @@ class TeamsTools:
                         "items": [
                             {
                                 "type": "ActionSet",
-    "actions": [
-        {
-            "type": "Action.OpenUrl",
-            "title": "📊 Review in Dashboard",
-            "url": f"http://localhost:3000/exception/{exception_uuid or case_id}",
-            "style": "positive",
-        },
-        # ← "View Details" button REMOVED
-    ],
+                                "actions": actions,
                             },
                         ],
                     },
