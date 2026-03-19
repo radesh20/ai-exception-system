@@ -50,6 +50,14 @@ const api = {
   getLearning:         () => req('/api/learning'),
   getPolicyPerf:       () => req('/api/learning/policies'),
   getLearningHistory:  () => req('/api/learning/history'),
+
+  // Agent Trace
+  getTrace:      (id) => req(`/api/exceptions/${id}/trace`),
+
+  // Categories & Batch
+  getCategories:       () => req('/api/categories'),
+  getCategoryPending:  (cat, limit = 5) => req(`/api/categories/${cat}/pending?limit=${limit}`),
+  processNextBatch:    (cat, size = 5) => req(`/api/categories/${cat}/process-next-batch?batch_size=${size}`, { method: 'POST' }),
 };
 
 export default api;

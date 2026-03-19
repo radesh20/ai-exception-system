@@ -30,6 +30,18 @@ def get_exception(exception_id: str):
     data["actions"] = [a.to_dict() for a in store.get_actions(exception_id)]
     return data
 
+@router.get("/exceptions/{exception_id}/trace")
+def get_exception_trace(exception_id: str):
+    """Get the agent conversation trace for an exception."""
+    store = get_store()
+    exc = store.get_exception(exception_id)
+    if not exc:
+        return {"error": "Not found"}
+    trace = (exc.recommended_action_params or {}).get("agent_trace", {})
+    if not trace:
+        return {"error": "No trace found for this exception"}
+    return trace
+
 @router.post("/process")
 def process_exception(req: ProcessRequest):
     store = get_store()
