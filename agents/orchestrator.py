@@ -1,4 +1,5 @@
 import uuid
+import time
 from datetime import datetime
 import config.settings as settings
 from models import ExceptionModel, ExceptionStatus
@@ -6,6 +7,7 @@ from agents.context_builder import ContextBuilderAgent
 from agents.root_cause import RootCauseAgent
 from agents.classifier import ClassifierAgent
 from agents.action_recommender import ActionRecommenderAgent
+from agents.tracer import AgentTracer
 from mcp_client import MCPClient
 import logging
 
@@ -19,6 +21,7 @@ class ExceptionOrchestrator:
         self.classifier = ClassifierAgent()
         self.recommender = ActionRecommenderAgent()
         self.deep_agent = None
+        self.last_trace = None
         self.mcp_client = MCPClient()
         if settings.AZURE_OPENAI_ENABLED:
             self._init_deep_agent()
@@ -36,16 +39,120 @@ class ExceptionOrchestrator:
             print(f"⚠️  Deep Agent failed: {e}. Using rule-based mode.")
 
     def process(self, raw_input):
+        tracer = AgentTracer()
+
+        # Step 1: Context Builder
+        t = time.time()
         context = self.context_builder.build(raw_input)
+        ms = int((time.time() - t) * 1000)
+        tracer.record(
+            "Context Builder",
+            f"Raw case {raw_input.get('case_id', '?')}",
+            f"type={context.exception_type}, exposure=${context.financial_exposure:,.0f}, deviation={context.deviation_point}",
+            details={
+                "case_id": context.case_id,
+                "exception_type": context.exception_type,
+                "financial_exposure": context.financial_exposure,
+                "severity_score": context.severity_score,
+                "deviation_point": context.deviation_point,
+                "actual_path": context.actual_path,
+                "happy_path": context.happy_path,
+                "vendor": context.vendor,
+            },
+            duration_ms=ms,
+        )
+        tracer.record_connection(
+            "Context Builder", "Root Cause Agent",
+            f"Passing context: type={context.exception_type}, path={' → '.join(context.actual_path)}",
+            {"exception_type": context.exception_type},
+        )
+
+        # Step 2: Root Cause
+        t = time.time()
         historical = self.store.get_historical_cases(context.exception_type)
         root_cause = self.root_cause_agent.analyze(context, historical)
+        ms = int((time.time() - t) * 1000)
+        tracer.record(
+            "Root Cause Agent",
+            f"Context: {context.exception_type}, Historical: {len(historical)} matches",
+            f"Hypothesis: {root_cause.hypothesis[:80]}... Confidence: {root_cause.confidence:.0%}",
+            details={
+                "historical_matches": len(historical),
+                "hypothesis": root_cause.hypothesis,
+                "confidence": root_cause.confidence,
+                "supporting_cases": root_cause.supporting_cases,
+                "causal_factors": root_cause.causal_factors,
+            },
+            duration_ms=ms,
+        )
+        tracer.record_connection(
+            "Root Cause Agent", "Classifier Agent",
+            f"Root cause confidence {root_cause.confidence:.0%}. Passing to classifier.",
+            {"confidence": root_cause.confidence},
+        )
+
+        # Step 3: Classifier
+        t = time.time()
         classification = self.classifier.classify(context, root_cause)
+        ms = int((time.time() - t) * 1000)
+        tracer.record(
+            "Classifier Agent",
+            f"Context + Root cause (confidence={root_cause.confidence:.0%})",
+            f"Category: {classification.category}, Priority: P{classification.priority}, Novel: {classification.is_novel}, Routing: {classification.routing.upper()}",
+            details={
+                "category": classification.category,
+                "priority": classification.priority,
+                "is_novel": classification.is_novel,
+                "routing": classification.routing,
+                "confidence": classification.confidence,
+            },
+            duration_ms=ms,
+        )
+        tracer.record_connection(
+            "Classifier Agent", "Action Recommender",
+            f"Classified as '{classification.category}' P{classification.priority}. Route: {classification.routing.upper()}.",
+            {"category": classification.category, "routing": classification.routing},
+        )
+
+        # Step 4: Recommender
+        t = time.time()
         policies = self.store.get_policies(classification.category)
         action_type, action_params, reasoning = self.recommender.recommend(context, classification, policies)
+        ms = int((time.time() - t) * 1000)
+        tracer.record(
+            "Action Recommender",
+            f"Category: {classification.category}, Policies: {len(policies)}",
+            f"Recommended: {action_type}. {reasoning[:80]}",
+            details={
+                "action_type": action_type,
+                "reasoning": reasoning,
+                "policies_checked": len(policies),
+            },
+            duration_ms=ms,
+        )
+
+        # Step 5: Decision Router
         status = ExceptionStatus.PENDING_DECISION if classification.routing == "human" else ExceptionStatus.APPROVED
+        tracer.record_connection(
+            "Action Recommender", "Decision Router",
+            f"Final: {action_type}. Route: {classification.routing.upper()}. {'Human review needed.' if status == ExceptionStatus.PENDING_DECISION else 'Auto-approved.'}",
+            {"action_type": action_type, "routing": classification.routing},
+        )
+        tracer.record(
+            "Decision Router",
+            f"Action: {action_type}, Route: {classification.routing}",
+            f"Status: {status.value}. {'Human review required.' if status == ExceptionStatus.PENDING_DECISION else 'Auto-executed.'}",
+            details={"final_status": status.value, "action": action_type, "routing": classification.routing},
+            duration_ms=0,
+        )
+
+        # Save trace
+        trace_summary = tracer.get_summary()
+        self.last_trace = trace_summary
+
         exc = ExceptionModel(id=str(uuid.uuid4()), status=status, context=context, root_cause=root_cause,
             classification=classification, recommended_action=action_type,
-            recommended_action_params=action_params, ai_reasoning=reasoning)
+            recommended_action_params={**action_params, "agent_trace": trace_summary}, ai_reasoning=reasoning)
         self.store.save_exception(exc)
 
         if classification.routing == "human":
@@ -63,3 +170,7 @@ class ExceptionOrchestrator:
                 logger.error(f"❌ Failed to send Teams notification: {e}")
 
         return exc
+
+    def get_last_trace(self):
+        """Return trace from most recent process() call."""
+        return self.last_trace or {}

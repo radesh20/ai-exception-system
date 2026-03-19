@@ -4,6 +4,7 @@ import { ArrowLeft } from 'lucide-react';
 import api from '../api';
 import { StatusBadge, PriorityBadge } from '../components/StatusBadge';
 import DecisionForm from '../components/DecisionForm';
+import AgentConversation from '../components/AgentConversation';
 
 export default function ExceptionDetail() {
   const { id } = useParams();
@@ -134,6 +135,11 @@ export default function ExceptionDetail() {
             ))}
           </Card>
         )}
+
+        {/* ── Agent Conversation Trace ── */}
+        <div className="detail-card" style={{ gridColumn: '1 / -1' }}>
+          <AgentConversation exceptionId={data.id} />
+        </div>
       </div>
     </div>
   );
