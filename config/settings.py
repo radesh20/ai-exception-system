@@ -24,7 +24,7 @@ CELONIS_DATA_MODEL_ID = os.getenv("CELONIS_DATA_MODEL_ID", "")
 STORAGE_BACKEND = os.getenv("STORAGE_BACKEND", "json")
 STORAGE_PATH    = os.getenv("STORAGE_PATH", "data/db")
 
-TEAMS_ENABLED     = _bool(os.getenv("TEAMS_ENABLED", "false"))
+TEAMS_ENABLED     = _bool(os.getenv("TEAMS_ENABLED", "true"))
 TEAMS_WEBHOOK_URL = os.getenv("TEAMS_WEBHOOK_URL", "")
 
 OUTLOOK_ENABLED       = _bool(os.getenv("OUTLOOK_ENABLED", "false"))

@@ -6,6 +6,10 @@ from agents.context_builder import ContextBuilderAgent
 from agents.root_cause import RootCauseAgent
 from agents.classifier import ClassifierAgent
 from agents.action_recommender import ActionRecommenderAgent
+from mcp_client import MCPClient
+import logging
+
+logger = logging.getLogger(__name__)
 
 class ExceptionOrchestrator:
     def __init__(self, store):
@@ -15,6 +19,7 @@ class ExceptionOrchestrator:
         self.classifier = ClassifierAgent()
         self.recommender = ActionRecommenderAgent()
         self.deep_agent = None
+        self.mcp_client = MCPClient()
         if settings.AZURE_OPENAI_ENABLED:
             self._init_deep_agent()
 
@@ -42,4 +47,19 @@ class ExceptionOrchestrator:
             classification=classification, recommended_action=action_type,
             recommended_action_params=action_params, ai_reasoning=reasoning)
         self.store.save_exception(exc)
+
+        if classification.routing == "human":
+            logger.info(f"📢 Sending Teams notification for {exc.id}")
+            try:
+                self.mcp_client.notify_teams(
+                    case_id=exc.context.case_id,
+                    issue=exc.context.exception_type,
+                    priority=exc.classification.priority,
+                    recommendation=exc.recommended_action,
+                    financial_exposure=exc.context.financial_exposure,
+                    exception_uuid=exc.id,
+                )
+            except Exception as e:
+                logger.error(f"❌ Failed to send Teams notification: {e}")
+
         return exc
