@@ -21,7 +21,7 @@ class MCPClient:
         """Initialize with API base URL."""
         base = base_url or f"http://localhost:{settings.API_PORT}"
         self.mcp_url = f"{base}/api/mcp"
-        logger.info(f"🔗 MCPClient initialized: {self.mcp_url}")
+        logger.info(f" MCPClient initialized: {self.mcp_url}")
 
     def invoke(self, tool_name: str, **kwargs) -> Dict[str, Any]:
         """
