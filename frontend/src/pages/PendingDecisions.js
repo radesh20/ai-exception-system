@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { CheckCircle, ClipboardCheck } from 'lucide-react';
 import api from '../api';
 import { PriorityBadge } from '../components/StatusBadge';
 import DecisionForm from '../components/DecisionForm';
@@ -33,15 +34,28 @@ export default function PendingDecisions({ onDecision }) {
     load();
   };
 
-  if (loading) return <div className="page"><div className="loading">Loading...</div></div>;
+  if (loading) return <div className="page fade-in"><div className="loading">Loading decisions...</div></div>;
 
   return (
-    <div className="page">
-      <h1>👤 Pending Decisions</h1>
+    <div className="page fade-in">
+      {/* ── Header ── */}
+      <div className="page-header">
+        <div>
+          <h1>Pending Decisions</h1>
+          <p className="page-subtitle">Review AI recommendations and make approval decisions</p>
+        </div>
+        {pending.length > 0 && (
+          <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
+            {pending.length} awaiting review
+          </span>
+        )}
+      </div>
 
       {pending.length === 0 ? (
         <div className="success-state">
-          <div className="success-icon">✅</div>
+          <div className="success-icon">
+            <CheckCircle size={48} strokeWidth={1.5} color="#34d399" />
+          </div>
           <h2>All Caught Up!</h2>
           <p>No exceptions waiting for human review.</p>
         </div>
@@ -82,7 +96,7 @@ export default function PendingDecisions({ onDecision }) {
                     <Field label="Team" value={selected.context?.assigned_team} />
                     <Field label="Vendor" value={selected.context?.vendor} />
                     <Field label="Severity" value={selected.context?.severity_score?.toFixed(2)} />
-                    <Field label="Compliance" value={selected.context?.compliance_flag ? '⚠️ Flagged' : 'Clean'} />
+                    <Field label="Compliance" value={selected.context?.compliance_flag ? 'Flagged' : 'Clean'} />
                   </div>
 
                   <h4>Process Path</h4>
@@ -92,11 +106,11 @@ export default function PendingDecisions({ onDecision }) {
                     deviation={selected.context?.deviation_point}
                   />
 
-                  <h4>🤖 AI Root Cause</h4>
+                  <h4>AI Root Cause</h4>
                   <div className="hypothesis-box">
                     {selected.root_cause?.hypothesis || 'Analysis pending'}
                   </div>
-                  <p style={{fontSize:'12px',color:'#666',marginTop:'4px'}}>
+                  <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
                     Confidence: {((selected.root_cause?.confidence || 0) * 100).toFixed(0)}%
                     {selected.root_cause?.supporting_cases?.length > 0 && (
                       <> | Supporting cases: {selected.root_cause.supporting_cases.join(', ')}</>
@@ -107,7 +121,11 @@ export default function PendingDecisions({ onDecision }) {
                 <DecisionForm exception={selected} onComplete={handleDecision} />
               </>
             ) : (
-              <div className="empty-state">← Select an exception from the queue</div>
+              <div className="empty-state" style={{ border: 'none' }}>
+                <div className="empty-state-icon"><ClipboardCheck size={20} /></div>
+                <div className="empty-state-title">Select an exception</div>
+                <div className="empty-state-desc">Click an item from the review queue to get started</div>
+              </div>
             )}
           </div>
         </div>
