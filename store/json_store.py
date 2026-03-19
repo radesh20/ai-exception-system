@@ -14,6 +14,7 @@ class JsonStore(BaseStore):
             "actions":    os.path.join(base_path, "actions.json"),
             "historical": os.path.join(base_path, "historical.json"),
             "policies":   os.path.join(base_path, "policies.json"),
+            "processed_cases": os.path.join(base_path, "processed_celonis_cases.json"),
         }
 
     def initialize(self):
@@ -153,6 +154,31 @@ class JsonStore(BaseStore):
                 p["success_rate"] = round(((rate * n) + (1.0 if success else 0.0)) / (n + 1), 4)
                 break
         self._write(self.files["policies"], data)
+
+    # ── Processed Celonis Cases ──
+    def mark_case_processed(self, case_id, exception_id, notification_sent=False, notification_sent_at=None):
+        """Record that a Celonis case has been processed to prevent re-processing on subsequent runs."""
+        now = datetime.now().isoformat()
+        record = {
+            "case_id": str(case_id),
+            "exception_id": str(exception_id),
+            "processed_at": now,
+            "notification_sent": notification_sent,
+            "notification_sent_at": notification_sent_at or (now if notification_sent else None),
+        }
+        self._upsert(self.files["processed_cases"], record, "case_id")
+
+    def is_case_processed(self, case_id):
+        """Return True if this Celonis case_id was already processed in a previous run."""
+        case_id = str(case_id)
+        for item in self._read(self.files["processed_cases"]):
+            if item.get("case_id") == case_id:
+                return True
+        return False
+
+    def get_processed_cases(self):
+        """Return all processed case_id strings."""
+        return [item["case_id"] for item in self._read(self.files["processed_cases"]) if "case_id" in item]
 
     # ── Stats ──
     def get_stats(self):
