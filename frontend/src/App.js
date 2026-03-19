@@ -9,6 +9,7 @@ import ActionHistory from './pages/ActionHistory';
 import LearningInsights from './pages/LearningInsights';
 import ExceptionDetail from './pages/ExceptionDetail';
 import Settings from './pages/Settings';
+import Classifier from './pages/Classifier';
 import api from './api';
 
 function App() {
@@ -16,11 +17,11 @@ function App() {
   const [pendingCount, setPendingCount] = useState(0);
 
   useEffect(() => {
-    api.getConfig().then(c => { if (c) setConfig(c); }).catch(() => {});
+    api.getConfig().then(c => { if (c) setConfig(c); }).catch(() => { });
     const refresh = () => {
       api.getPending().then(d => {
         if (Array.isArray(d)) setPendingCount(d.length);
-      }).catch(() => {});
+      }).catch(() => { });
     };
     refresh();
     const interval = setInterval(refresh, 15000);
@@ -38,6 +39,7 @@ function App() {
           <Route path="/decisions" element={<PendingDecisions onDecision={() => setPendingCount(c => Math.max(0, c - 1))} />} />
           <Route path="/actions" element={<ActionHistory />} />
           <Route path="/learning" element={<LearningInsights />} />
+          <Route path="/classifier" element={<Classifier />} />
           <Route path="/settings" element={<Settings config={config} />} />
           <Route path="/exception/:id" element={<ExceptionDetail />} />
           <Route path="*" element={<Navigate to="/" />} />

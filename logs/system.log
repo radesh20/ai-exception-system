@@ -778,3 +778,9 @@
 2026-03-19 17:04:39 | INFO     | agents.tracer                  | Agent step | trace=ae755afa | step=9 | agent=Decision Router | status=success | 0ms
 2026-03-19 17:04:40 | INFO     | agents.orchestrator            | 📢 Sending Teams notification for dc3e8cfb-918c-4236-9392-e2d4c8863b58
 2026-03-19 17:04:40 | INFO     | mcp_client                     | ✅ [MCPClient] notify_procurement_team succeeded
+2026-03-19 17:57:52 | INFO     | root                           | Logging initialized | level=INFO | file=logs\system.log
+2026-03-19 17:58:03 | ERROR    | celonis.client                 | Failed to connect to Celonis: No module named 'pycelonis'
+Traceback (most recent call last):
+  File "D:\ai-exception-system\store\..\celonis\client.py", line 53, in _connect
+    from pycelonis import get_celonis
+ModuleNotFoundError: No module named 'pycelonis'

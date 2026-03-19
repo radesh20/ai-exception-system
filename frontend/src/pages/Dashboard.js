@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Hash, Clock, CheckCircle, TrendingUp, Users, Zap, RefreshCw, AlertTriangle, ArrowRight, Inbox } from 'lucide-react';
+import { Hash, Clock, CheckCircle, TrendingUp, Users, Zap, RefreshCw, AlertTriangle, ArrowRight, Inbox, ShieldCheck, Sparkles } from 'lucide-react';
 import api from '../api';
 import ExceptionCard from '../components/ExceptionCard';
 
@@ -23,8 +23,22 @@ export default function Dashboard({ config }) {
     });
   };
 
+  // derive novel exceptions count from recent
+  const novelCount = recent.filter(e => e.classification?.is_novel).length;
+
+  // derive auto-resolved count
+  const autoResolved = stats
+    ? (stats.completed || 0) - (stats.total_decisions || 0) + (stats.total_actions || 0)
+    : 0;
+
+  // avg confidence from recent
+  const avgConf = recent.length > 0
+    ? (recent.reduce((sum, e) => sum + (e.classification?.confidence || 0), 0) / recent.length * 100).toFixed(0)
+    : 0;
+
   return (
     <div className="page fade-in">
+
       {/* ── Page Header ── */}
       <div className="page-header">
         <div>
@@ -71,10 +85,12 @@ export default function Dashboard({ config }) {
           <KPI icon={<TrendingUp size={20} />} label="Approval Rate" value={`${((stats?.approval_rate || 0) * 100).toFixed(0)}%`} />
           <KPI icon={<Users size={20} />} label="Total Decisions" value={stats?.total_decisions || 0} />
           <KPI icon={<Zap size={20} />} label="Actions Executed" value={stats?.total_actions || 0} />
+          <KPI icon={<ShieldCheck size={20} />} label="Auto-Resolved" value={autoResolved >= 0 ? autoResolved : 0} />
+          <KPI icon={<TrendingUp size={20} />} label="Avg Confidence" value={`${avgConf}%`} />
         </div>
       </div>
 
-      {/* ── Alert Banner ── */}
+      {/* ── Alert Banner: Pending Review ── */}
       {pending.length > 0 && (
         <div className="alert-banner">
           <AlertTriangle size={16} />
@@ -85,8 +101,22 @@ export default function Dashboard({ config }) {
         </div>
       )}
 
+      {/* ── Alert Banner: Novel Exceptions ── */}
+      {novelCount > 0 && (
+        <div className="alert-banner" style={{ background: 'var(--purple-bg)', borderColor: 'rgba(139,114,224,0.25)', color: 'var(--purple-text)' }}>
+          <Sparkles size={16} />
+          <span>
+            <strong>{novelCount}</strong> novel exception{novelCount > 1 ? 's' : ''} detected — unseen patterns found.
+          </span>
+          <Link to="/classifier" style={{ color: 'var(--purple)', fontWeight: 600 }}>
+            Review Classifier <ArrowRight size={13} />
+          </Link>
+        </div>
+      )}
+
       {/* ── Main Content: Two-Column Layout ── */}
       <div className="dashboard-two-col">
+
         {/* Left: Recent Exceptions */}
         <div className="section-card">
           <div className="section-card-header">
@@ -119,6 +149,7 @@ export default function Dashboard({ config }) {
 
         {/* Right: Pending Queue + Quick Stats */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+
           {/* Pending Queue Card */}
           <div className="section-card">
             <div className="section-card-header">

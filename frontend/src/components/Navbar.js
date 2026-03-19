@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Inbox, Brain, ClipboardCheck, Zap, TrendingUp, Settings } from 'lucide-react';
+import { LayoutDashboard, Inbox, Brain, ClipboardCheck, Zap, TrendingUp, Settings, BarChart2 } from 'lucide-react';
 
 const NAV = [
   { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
@@ -9,6 +9,7 @@ const NAV = [
   { path: '/decisions', icon: ClipboardCheck, label: 'Decisions', alert: true },
   { path: '/actions', icon: Zap, label: 'Actions' },
   { path: '/learning', icon: TrendingUp, label: 'Learning' },
+  { path: '/classifier', icon: BarChart2, label: 'Classifier' },
   { path: '/settings', icon: Settings, label: 'Settings' },
 ];
 
