@@ -8,7 +8,13 @@ Data flow:
 """
 
 import os
+os.environ["PYTHONUTF8"] = "1"
+
 import sys
+import io
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
+
 import json
 import logging
 
@@ -73,7 +79,7 @@ def run(force=False):
         variants = []
         logger.warning(f"Could not load process variants: {e}")
 
-    # 3. Deduplication Check
+    # 3. Deduplication Check — use both exception store and persistent processing state
     existing = {e.context.case_id for e in store.list_exceptions(limit=10000) if e.context}
     
     results, skipped = [], 0
@@ -85,8 +91,8 @@ def run(force=False):
         desc = case.pop("description", f"Case {i}")
         cid = case.get("case_id", f"CASE-{i}")
 
-        # Skip if already in database (unless --force is used)
-        if cid in existing and not force:
+        # Skip if already processed (check both persistent state and exception store)
+        if not force and (store.is_case_processed(cid) or cid in existing):
             print(f"  [{i}] ⏭️  SKIP: {cid} (Already Processed)")
             skipped += 1
             continue
@@ -115,6 +121,7 @@ def run(force=False):
                 )
             
             results.append(exc)
+            store.mark_case_processed(cid, exc.id)
             
         except Exception as e:
             print(f"      ❌ Error processing case {cid}: {e}")
