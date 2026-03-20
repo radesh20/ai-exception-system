@@ -1,14 +1,18 @@
 from datetime import datetime
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from store import get_store
 from models import Decision, DecisionType, ExceptionStatus, Action, ActionStatus
 from agents import LearningEngine
+from agents.action_agent import ActionAgent
 from notifications import NotificationManager
 from execution import get_executor
+from erp.servicenow_connector import ServiceNowConnector
 import config.settings as settings
+import logging
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 class DecisionRequest(BaseModel):
     exception_id: str
@@ -80,96 +84,208 @@ def get_erp_recommendation(exception_id: str):
 
 @router.post("/exceptions/{exception_id}/erp-approve")
 def approve_erp_action(exception_id: str, req: ErpDecisionRequest = ErpDecisionRequest()):
-    """Human approves the ERP recommendation for this exception."""
-    store = get_store()
-    exc = store.get_exception(exception_id)
-    if not exc:
-        return {"error": "Exception not found"}
-    if not exc.erp_recommendation:
-        return {"error": "No ERP recommendation found for this exception"}
-
-    exc.erp_execution_status = "approved"
-    exc.updated_at = datetime.now().isoformat()
-    store.update_exception(exc)
-
-    # Record feedback via learning engine
+    """
+    Human approves the ERP recommendation for this exception.
+    Creates a ServiceNow incident via ActionAgent.
+    """
     try:
-        decision = Decision(
-            id="",
-            exception_id=exception_id,
-            decision_type=DecisionType("approved"),
-            analyst_name=req.analyst_name,
-            notes=f"ERP action approved. {req.notes}".strip(),
-            original_recommendation=exc.recommended_action or "",
-            final_action=exc.erp_recommendation.get("transaction", ""),
-        )
-        store.save_decision(decision)
-        LearningEngine(store).record_feedback(decision)
-    except Exception:
-        pass
+        logger.info(f"[API] Approving ERP action for: {exception_id}")
+        
+        store = get_store()
+        exc = store.get_exception(exception_id)
+        
+        if not exc:
+            logger.error(f"Exception not found: {exception_id}")
+            return {"error": "Exception not found"}
+        
+        if not exc.erp_recommendation:
+            logger.error(f"No ERP recommendation found: {exception_id}")
+            return {"error": "No ERP recommendation found for this exception"}
 
-    # Send Teams notification
-    try:
-        erp = exc.erp_recommendation
-        msg = (
-            f"ERP action approved by {req.analyst_name}. "
-            f"Transaction: {erp.get('transaction')} ({erp.get('system', 'SAP')}). "
-            f"Ready for execution when ERP access available."
-        )
-        NotificationManager().notify_decision(exception_id, msg, req.analyst_name)
-    except Exception:
-        pass
+        # ─────────────────────────────────────────────────────────────
+        # STEP 1: Update exception status to approved
+        # ─────────────────────────────────────────────────────────────
+        
+        exc.erp_execution_status = "approved"
+        exc.updated_at = datetime.now().isoformat()
+        store.update_exception(exc)
+        
+        logger.info(f"[API] Exception status updated to approved")
 
-    return {
-        "exception_id": exception_id,
-        "erp_execution_status": exc.erp_execution_status,
-        "erp_recommendation": exc.erp_recommendation,
-        "message": f"ERP action approved by {req.analyst_name}.",
-    }
+        # ─────────────────────────────────────────────────────────────
+        # STEP 2: Record decision via learning engine
+        # ─────────────────────────────────────────────────────────────
+        
+        try:
+            decision = Decision(
+                id="",
+                exception_id=exception_id,
+                decision_type=DecisionType("approved"),
+                analyst_name=req.analyst_name,
+                notes=f"ERP action approved. {req.notes}".strip(),
+                original_recommendation=exc.recommended_action or "",
+                final_action=exc.erp_recommendation.get("transaction", ""),
+            )
+            store.save_decision(decision)
+            LearningEngine(store).record_feedback(decision)
+            logger.info(f"[API] Decision recorded")
+        except Exception as e:
+            logger.warning(f"[API] Could not record decision: {e}")
+
+        # ─────────────────────────────────────────────────────────────
+        # STEP 3: CREATE SERVICENOW INCIDENT VIA ACTIONAGENT
+        # ─────────────────────────────────────────────────────────────
+        
+        servicenow_result = None
+        
+        if settings.ACTION_AGENT_ENABLED:
+            try:
+                logger.info(f"[API] Initializing ActionAgent for ServiceNow")
+                
+                servicenow = ServiceNowConnector()
+                action_agent = ActionAgent(store=store, servicenow_connector=servicenow)
+                
+                # Convert exception to dict if needed
+                exc_dict = exc.to_dict() if hasattr(exc, 'to_dict') else exc
+                
+                # Execute action (create incident)
+                action_result = action_agent.execute(exc_dict)
+                
+                logger.info(f"[API] ActionAgent result: {action_result}")
+                
+                if action_result.get("status") == "success":
+                    servicenow_result = {
+                        "ticket_number": action_result.get("ticket_number"),
+                        "ticket_id": action_result.get("ticket_id"),
+                        "ticket_type": action_result.get("ticket_type"),
+                        "url": action_result.get("url"),
+                        "message": action_result.get("message")
+                    }
+                    
+                    logger.info(f"✅ ServiceNow incident created: {action_result.get('ticket_number')}")
+                    
+                    # Update exception with ticket info
+                    exc.servicenow_ticket_id = action_result.get("ticket_id")
+                    exc.servicenow_ticket_number = action_result.get("ticket_number")
+                    exc.erp_execution_status = "executed"
+                    store.update_exception(exc)
+                
+                else:
+                    logger.warning(f"[API] ActionAgent failed: {action_result.get('error')}")
+                    servicenow_result = {
+                        "error": action_result.get("error"),
+                        "status": "failed"
+                    }
+            
+            except Exception as e:
+                logger.error(f"❌ ActionAgent exception: {e}", exc_info=True)
+                servicenow_result = {
+                    "error": str(e),
+                    "status": "failed"
+                }
+        else:
+            logger.info("[API] ActionAgent disabled in settings")
+
+        # ─────────────────────────────────────────────────────────────
+        # STEP 4: Send Teams notification
+        # ─────────────────────────────────────────────────────────────
+        
+        try:
+            erp = exc.erp_recommendation
+            ticket_info = ""
+            
+            if servicenow_result and servicenow_result.get("ticket_number"):
+                ticket_info = f"\n🎫 ServiceNow Ticket: {servicenow_result.get('ticket_number')}\n🔗 Link: {servicenow_result.get('url')}"
+            
+            msg = (
+                f"ERP action approved by {req.analyst_name}. "
+                f"Transaction: {erp.get('transaction')} ({erp.get('system', 'SAP')}). "
+                f"{ticket_info or 'Pending execution.'}"
+            )
+            NotificationManager().notify_decision(exception_id, msg, req.analyst_name)
+            logger.info(f"[API] Teams notification sent")
+        except Exception as e:
+            logger.warning(f"[API] Could not send Teams notification: {e}")
+
+        # ─────────────────────────────────────────────────────────────
+        # STEP 5: Return response
+        # ─────────────────────────────────────────────────────────────
+        
+        logger.info(f"✅ ERP approval complete for {exception_id}")
+        
+        return {
+            "status": "success",
+            "exception_id": exception_id,
+            "erp_execution_status": exc.erp_execution_status,
+            "erp_recommendation": exc.erp_recommendation,
+            "servicenow_ticket": servicenow_result,
+            "message": f"ERP action approved by {req.analyst_name}.",
+            "analyst": req.analyst_name
+        }
+    
+    except Exception as e:
+        logger.error(f"❌ Exception in approve_erp_action: {e}", exc_info=True)
+        return {
+            "status": "error",
+            "error": str(e),
+            "message": "Internal server error"
+        }
 
 @router.post("/exceptions/{exception_id}/erp-reject")
 def reject_erp_action(exception_id: str, req: ErpDecisionRequest = ErpDecisionRequest()):
     """Human rejects the ERP recommendation for this exception."""
-    store = get_store()
-    exc = store.get_exception(exception_id)
-    if not exc:
-        return {"error": "Exception not found"}
-    if not exc.erp_recommendation:
-        return {"error": "No ERP recommendation found for this exception"}
-
-    exc.erp_execution_status = "rejected"
-    exc.updated_at = datetime.now().isoformat()
-    store.update_exception(exc)
-
-    # Record feedback via learning engine
     try:
-        decision = Decision(
-            id="",
-            exception_id=exception_id,
-            decision_type=DecisionType("rejected"),
-            analyst_name=req.analyst_name,
-            notes=f"ERP action rejected. {req.notes}".strip(),
-            original_recommendation=exc.recommended_action or "",
-            final_action="",
-        )
-        store.save_decision(decision)
-        LearningEngine(store).record_feedback(decision)
-    except Exception:
-        pass
+        store = get_store()
+        exc = store.get_exception(exception_id)
+        
+        if not exc:
+            return {"error": "Exception not found"}
+        
+        if not exc.erp_recommendation:
+            return {"error": "No ERP recommendation found for this exception"}
 
-    # Send Teams notification
-    try:
-        NotificationManager().notify_decision(
-            exception_id,
-            f"ERP action rejected by {req.analyst_name}. Alternative action required.",
-            req.analyst_name,
-        )
-    except Exception:
-        pass
+        exc.erp_execution_status = "rejected"
+        exc.updated_at = datetime.now().isoformat()
+        store.update_exception(exc)
 
-    return {
-        "exception_id": exception_id,
-        "erp_execution_status": exc.erp_execution_status,
-        "erp_recommendation": exc.erp_recommendation,
-        "message": f"ERP action rejected by {req.analyst_name}. Alternative action required.",
-    }
+        # Record feedback via learning engine
+        try:
+            decision = Decision(
+                id="",
+                exception_id=exception_id,
+                decision_type=DecisionType("rejected"),
+                analyst_name=req.analyst_name,
+                notes=f"ERP action rejected. {req.notes}".strip(),
+                original_recommendation=exc.recommended_action or "",
+                final_action="",
+            )
+            store.save_decision(decision)
+            LearningEngine(store).record_feedback(decision)
+        except Exception:
+            pass
+
+        # Send Teams notification
+        try:
+            NotificationManager().notify_decision(
+                exception_id,
+                f"ERP action rejected by {req.analyst_name}. Alternative action required.",
+                req.analyst_name,
+            )
+        except Exception:
+            pass
+
+        return {
+            "status": "success",
+            "exception_id": exception_id,
+            "erp_execution_status": exc.erp_execution_status,
+            "erp_recommendation": exc.erp_recommendation,
+            "message": f"ERP action rejected by {req.analyst_name}. Alternative action required.",
+        }
+    
+    except Exception as e:
+        logger.error(f"❌ Exception in reject_erp_action: {e}", exc_info=True)
+        return {
+            "status": "error",
+            "error": str(e),
+            "message": "Internal server error"
+        }

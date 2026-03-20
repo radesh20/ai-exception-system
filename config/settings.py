@@ -86,3 +86,26 @@ LEARNING_CONFIDENCE_THRESHOLD = float(os.getenv("LEARNING_CONFIDENCE_THRESHOLD",
 API_HOST     = os.getenv("API_HOST", "0.0.0.0")
 API_PORT     = int(os.getenv("API_PORT", "8000"))
 CORS_ORIGINS = [x.strip() for x in os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")]
+
+
+
+
+# ═════════════════════════════════════════════════════════════
+# SERVICENOW CONFIGURATION
+# ═════════════════════════════════════════════════════════════
+
+SERVICENOW_URL = os.getenv("SERVICENOW_URL", "")
+
+SERVICENOW_USER = os.getenv("SERVICENOW_USER", "")
+
+SERVICENOW_PASS = os.getenv("SERVICENOW_PASS", "")
+
+
+# ═════════════════════════════════════════════════════════════
+# ACTION AGENT CONFIGURATION
+# ═════════════════════════════════════════════════════════════
+
+ACTION_AGENT_ENABLED = os.getenv("ACTION_AGENT_ENABLED", "true").lower() == "true"
+AUTO_CREATE_INCIDENT = os.getenv("AUTO_CREATE_INCIDENT", "true").lower() == "true"
+AUTO_MONITOR_INTERVAL = int(os.getenv("AUTO_MONITOR_INTERVAL", "300"))  # 5 minutes
+AUTO_CLOSE_ON_RESOLVE = os.getenv("AUTO_CLOSE_ON_RESOLVE", "true").lower() == "true"
