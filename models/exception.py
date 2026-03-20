@@ -49,6 +49,7 @@ class Classification:
     is_novel: bool
     routing: str
     confidence: float
+    responsible_team: str = ""
 
 
 class ExceptionModel:
@@ -118,7 +119,8 @@ class ExceptionModel:
             cl = Classification(
                 category=x.get("category", ""), priority=x.get("priority", 1),
                 is_novel=x.get("is_novel", False), routing=x.get("routing", "human"),
-                confidence=x.get("confidence", 0))
+                confidence=x.get("confidence", 0),
+                responsible_team=x.get("responsible_team", ""))
 
         return cls(
             id=d.get("id", ""), status=ExceptionStatus(d.get("status", "new")),

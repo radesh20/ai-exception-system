@@ -5,7 +5,7 @@ This file focuses on Teams webhook integration for now.
 from api.integrations.teams_webhook_client import TeamsWebhookClient
 from config import settings
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +16,45 @@ class TeamsTools:
     def __init__(self):
         """Initialize Teams webhook client."""
         self.client = TeamsWebhookClient()
-        logger.info("✅ Teams MCP Tools initialized")
+        logger.info("[OK] Teams MCP Tools initialized")
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _get_target_channels(
+        assigned_team: str,
+        responsible_team: str,
+        priority: int,
+    ) -> List[str]:
+        """
+        Determine which Teams channels should receive a notification.
+
+        Rules:
+        - Always notify the assigned team's channel.
+        - Also notify the responsible team if it differs from assigned.
+        - Escalate to manager channel when priority >= threshold.
+        - Fall back to DEFAULT if no team is resolved.
+        """
+        channels: set = set()
+
+        if assigned_team:
+            channels.add(assigned_team)
+
+        if responsible_team and responsible_team != assigned_team:
+            channels.add(responsible_team)
+
+        escalation_threshold = getattr(
+            settings, "TEAMS_MANAGER_ESCALATION_PRIORITY", 4
+        )
+        if priority >= escalation_threshold:
+            channels.add("manager")
+
+        if not channels:
+            channels.add("DEFAULT")
+
+        return list(channels)
 
     def notify_procurement_team(
             self,
@@ -27,9 +65,16 @@ class TeamsTools:
             financial_exposure: float = 0,
             exception_uuid: str = "",
             erp_recommendation: dict = None,
+            assigned_team: str = "",
+            responsible_team: str = "",
     ) -> Dict[str, Any]:
         """
-        Tool: Send notification to procurement team via Teams.
+        Tool: Send notification to procurement team(s) via Teams.
+
+        Supports multi-channel routing:
+        - Notifies assigned_team channel.
+        - Also notifies responsible_team channel when different.
+        - Escalates to manager channel for high-priority exceptions.
 
         Args:
             case_id: Exception case ID
@@ -39,38 +84,43 @@ class TeamsTools:
             financial_exposure: Financial impact in dollars
             exception_uuid: Internal exception UUID
             erp_recommendation: Optional ERP action dict
+            assigned_team: Team channel that owns this exception
+            responsible_team: Additional responsible team channel
 
         Returns:
-            Status of notification
+            Status of notification (per channel)
         """
         logger.info(f"[MCP Tool] notify_procurement_team: {case_id} (P{priority})")
 
         try:
             # Build Adaptive Card
             priority_color = {
-                1: "good",  # Green
-                2: "good",  # Green
-                3: "warning",  # Orange
-                4: "attention",  # Red
-                5: "dark",  # Dark Red
+                1: "good",
+                2: "good",
+                3: "warning",
+                4: "attention",
+                5: "dark",
             }.get(priority, "dark")
 
-            # Priority emoji
-            priority_emoji = {
-                1: "🟢",
-                2: "🟢",
-                3: "🟡",
-                4: "🔴",
-                5: "🔴",
-            }.get(priority, "🔴")
+            priority_label = {
+                1: "P1",
+                2: "P2",
+                3: "P3",
+                4: "P4",
+                5: "P5",
+            }.get(priority, str(priority))
 
             # Core facts
             core_facts = [
-                {"name": "📋 Case ID", "value": case_id},
-                {"name": "⚠️ Issue", "value": issue},
-                {"name": "💰 Financial Exposure", "value": f"${financial_exposure:,.2f}"},
-                {"name": "✅ Recommended Action", "value": recommendation},
+                {"name": "Case ID", "value": case_id},
+                {"name": "Issue", "value": issue},
+                {"name": "Financial Exposure", "value": f"${financial_exposure:,.2f}"},
+                {"name": "Recommended Action", "value": recommendation},
             ]
+            if assigned_team:
+                core_facts.append({"name": "Assigned Team", "value": assigned_team})
+            if responsible_team and responsible_team != assigned_team:
+                core_facts.append({"name": "Responsible Team", "value": responsible_team})
 
             # ERP section facts (appended when available)
             if erp_recommendation:
@@ -79,10 +129,10 @@ class TeamsTools:
                 erp_desc = erp_recommendation.get("description", "")
                 erp_impact = erp_recommendation.get("estimated_impact", "")
                 core_facts += [
-                    {"name": "🏭 ERP Action", "value": f"{erp_system} Transaction {erp_tx}"},
-                    {"name": "📝 ERP Steps", "value": erp_desc},
-                    {"name": "💡 Estimated Impact", "value": erp_impact},
-                    {"name": "⚡ ERP Status", "value": "Pending Approval"},
+                    {"name": "ERP Action", "value": f"{erp_system} Transaction {erp_tx}"},
+                    {"name": "ERP Steps", "value": erp_desc},
+                    {"name": "Estimated Impact", "value": erp_impact},
+                    {"name": "ERP Status", "value": "Pending Approval"},
                 ]
 
             # Action buttons
@@ -90,16 +140,16 @@ class TeamsTools:
             actions = [
                 {
                     "type": "Action.OpenUrl",
-                    "title": "📊 Review in Dashboard",
+                    "title": "Review in Dashboard",
                     "url": dashboard_url,
                     "style": "positive",
                 },
             ]
             if erp_recommendation:
-                erp_approve_url = f"http://localhost:3000/exception/{exception_uuid or case_id}"
+                erp_approve_url = f"http://localhost:3000/exception/{exception_uuid or case_id}/approve-erp"
                 actions.append({
                     "type": "Action.OpenUrl",
-                    "title": "🏭 Approve ERP Action",
+                    "title": "Approve ERP Action",
                     "url": erp_approve_url,
                     "style": "positive",
                 })
@@ -121,7 +171,7 @@ class TeamsTools:
                                         "items": [
                                             {
                                                 "type": "TextBlock",
-                                                "text": f"{priority_emoji} P2P Exception — Priority {priority}/5",
+                                                "text": f"P2P Exception — Priority {priority_label}/5",
                                                 "weight": "bolder",
                                                 "size": "large",
                                                 "color": priority_color,
@@ -154,14 +204,32 @@ class TeamsTools:
                 ],
             }
 
-            # Send via webhook
-            result = self.client.send_adaptive_card(card)
+            # Determine target channels and send to each
+            target_channels = self._get_target_channels(
+                assigned_team, responsible_team, priority
+            )
+            results = {}
+            for channel in target_channels:
+                channel_map = getattr(settings, "TEAMS_CHANNEL_MAP", {})
+                webhook_url = channel_map.get(channel, channel_map.get("DEFAULT", ""))
+                if webhook_url:
+                    result = self.client.send_adaptive_card(card, webhook_url=webhook_url)
+                    results[channel] = result
+                else:
+                    # TODO_TEAMS_CHANNEL: Channel has no webhook configured.
+                    # Add TEAMS_WEBHOOK_{CHANNEL} to .env file.
+                    env_key = f"TEAMS_WEBHOOK_{channel.upper()}"
+                    logger.warning(
+                        f"[WARN] No webhook for channel '{channel}'. "
+                        f"TODO_TEAMS_CHANNEL: Configure {env_key} in .env"
+                    )
+                    results[channel] = {"error": f"No webhook configured for '{channel}'"}
 
-            logger.info(f"[MCP Result] {result}")
-            return result
+            logger.info(f"[INFO] Teams notification sent to {len(results)} channel(s): {list(results.keys())}")
+            return {"channels": results, "case_id": case_id}
 
         except Exception as e:
-            logger.error(f"[MCP Error] notify_procurement_team: {e}")
+            logger.error(f"[ERROR] notify_procurement_team: {e}")
             return {"error": str(e), "case_id": case_id}
 
     def send_simple_alert(self, message: str) -> Dict[str, Any]:
@@ -174,10 +242,10 @@ class TeamsTools:
         Returns:
             Status
         """
-        logger.info(f"[MCP Tool] send_simple_alert")
+        logger.info("[MCP Tool] send_simple_alert")
         try:
             result = self.client.send_simple_message(message)
             return result
         except Exception as e:
-            logger.error(f"[MCP Error] send_simple_alert: {e}")
+            logger.error(f"[ERROR] send_simple_alert: {e}")
             return {"error": str(e)}

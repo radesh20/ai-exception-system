@@ -79,7 +79,7 @@ async def list_tools():
         }
         tools.append(tool_def)
 
-    logger.info(f"🔧 MCP Tool discovery: {len(tools)} tools available")
+    logger.info(f"[INFO] MCP Tool discovery: {len(tools)} tools available")
     return {"tools": tools}
 
 
@@ -128,7 +128,7 @@ async def invoke_tool(request: ToolInvocationRequest):
                 error=result["error"],
             )
 
-        logger.info(f"✅ [MCP] Tool {tool_name} succeeded")
+        logger.info(f"[OK] [MCP] Tool {tool_name} succeeded")
         return ToolInvocationResponse(
             status="success",
             tool=tool_name,
@@ -136,7 +136,7 @@ async def invoke_tool(request: ToolInvocationRequest):
         )
 
     except Exception as e:
-        logger.error(f"❌ [MCP] Tool {tool_name} failed: {e}")
+        logger.error(f"[ERROR] [MCP] Tool {tool_name} failed: {e}")
         return ToolInvocationResponse(
             status="error",
             tool=tool_name,
