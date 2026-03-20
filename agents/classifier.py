@@ -8,20 +8,24 @@ class ClassifierAgent:
     KNOWN = {"payment_mismatch", "quantity_mismatch", "invoice_mismatch", "goods_receipt_mismatch", "tax_code_change"}
     LOW_CONFIDENCE_THRESHOLD = 0.6
 
-    # Vendor short-code → expected exception type mapping
-    VENDOR_TYPE_MAP = {
-        "N14": "quantity_mismatch",
-        "I9": "payment_mismatch",
-    }
+    # VENDOR_TYPE_MAP has been removed — vendor patterns are learned dynamically
+    # from historical data. See _analyze_vendor_pattern() below.
+    # TODO_VENDOR_PATTERN: Add manual hints here ONLY when historical confidence is HIGH
+    # e.g. after observing 50+ consistent cases for a vendor.
 
-    def classify(self, context, root_cause, prompt_package=None):
+    def classify(self, context, root_cause, prompt_package=None, historical_cases=None):
         cat = self._normalize_exception_type(context.exception_type)
         is_novel = self._is_truly_novel(cat, root_cause)
         if is_novel:
             cat = "novel_exception"
         priority = self._priority(context)
-        vendor_boost = self._get_vendor_boost(context, root_cause)
-        effective_confidence = min(1.0, root_cause.confidence + vendor_boost)
+
+        # Confidence boost comes ONLY from prompt_package (vendor intelligence
+        # from GPT-4o or rule-based path — NOT from hardcoded vendor assumptions).
+        effective_confidence = root_cause.confidence
+        if prompt_package and getattr(prompt_package, "confidence_boost", 0):
+            effective_confidence = min(1.0, effective_confidence + prompt_package.confidence_boost)
+
         # Route to human when there is no historical evidence and confidence is still low
         low_confidence_no_history = effective_confidence < self.LOW_CONFIDENCE_THRESHOLD and not root_cause.supporting_cases
         routing = "human" if (is_novel or priority >= 4 or context.compliance_flag or context.financial_exposure > 100000 or low_confidence_no_history) else "auto"
@@ -33,7 +37,17 @@ class ClassifierAgent:
             )
             logger.info("[INFO] ClassifierAgent: applied prompt_package guidance.")
 
-        return Classification(category=cat, priority=priority, is_novel=is_novel, routing=routing, confidence=effective_confidence)
+        # Derive responsible_team from vendor pattern analysis (dynamic, no hardcoding)
+        responsible_team = self._derive_responsible_team(context, historical_cases or [])
+
+        return Classification(
+            category=cat,
+            priority=priority,
+            is_novel=is_novel,
+            routing=routing,
+            confidence=effective_confidence,
+            responsible_team=responsible_team,
+        )
 
     def _normalize_exception_type(self, exception_type):
         return exception_type.lower().replace(" ", "_")
@@ -42,25 +56,104 @@ class ClassifierAgent:
         """Return True only when the type is unknown AND there are no supporting historical cases."""
         return cat not in self.KNOWN and not root_cause.supporting_cases
 
-    def _get_vendor_boost(self, context, root_cause):
-        """Return a confidence boost when the vendor pattern matches the exception type."""
-        expected_type = self.VENDOR_TYPE_MAP.get(context.vendor)
-        if expected_type and self._normalize_exception_type(context.exception_type) == expected_type:
-            return 0.2
-        return 0.0
+    def _analyze_vendor_pattern(self, vendor, historical_cases):
+        """
+        Dynamically analyse historical cases for a vendor.
+
+        Returns a dict with:
+          - dominant_type: most common exception type for this vendor (or None)
+          - consistency_score: fraction of cases that match the dominant type (0.0-1.0)
+          - total_cases: number of historical cases for this vendor
+          - type_counts: {exception_type: count} breakdown
+
+        Works for ANY vendor including new ones.
+        Returns None/unknown safely for new vendors.
+        """
+        if not vendor or not historical_cases:
+            return None
+
+        vendor_cases = [c for c in historical_cases if c.get("vendor") == vendor]
+        if not vendor_cases:
+            # TODO_VENDOR_PATTERN: Vendor {vendor} has no historical cases yet.
+            # Route to human until enough data accumulates.
+            return None
+
+        type_counts = {}
+        for case in vendor_cases:
+            exc_type = case.get("exception_type", "unknown")
+            type_counts[exc_type] = type_counts.get(exc_type, 0) + 1
+
+        dominant_type = max(type_counts, key=type_counts.get)
+        consistency_score = type_counts[dominant_type] / len(vendor_cases)
+
+        return {
+            "dominant_type": dominant_type,
+            "consistency_score": round(consistency_score, 3),
+            "total_cases": len(vendor_cases),
+            "type_counts": type_counts,
+        }
+
+    def _derive_responsible_team(self, context, historical_cases):
+        """
+        Derive the responsible team from historical data for this vendor/type combination.
+        Falls back to the assigned team from context.
+        """
+        if not historical_cases:
+            return context.assigned_team or ""
+
+        vendor_cases = [
+            c for c in historical_cases
+            if c.get("vendor") == context.vendor
+            and c.get("exception_type") == context.exception_type
+        ]
+        if not vendor_cases:
+            vendor_cases = [c for c in historical_cases if c.get("vendor") == context.vendor]
+
+        if vendor_cases:
+            # Use the most frequently seen team for this vendor+type combination
+            team_counts = {}
+            for case in vendor_cases:
+                team = case.get("assigned_team") or case.get("team", "")
+                if team:
+                    team_counts[team] = team_counts.get(team, 0) + 1
+            if team_counts:
+                return max(team_counts, key=team_counts.get)
+
+        return context.assigned_team or ""
 
     def _priority(self, ctx):
         p = 1
         if ctx.financial_exposure > 100000: p += 2
         elif ctx.financial_exposure > 50000: p += 1
-        if ctx.severity_score > 0.8: p += 1
+        if ctx.severity_score is not None and ctx.severity_score > 0.8: p += 1
         if ctx.compliance_flag: p += 1
+
+        # SLA — only for recent exceptions (within 30 days).
+        # Celonis has historical data from 2024 — don't penalize old data
+        # by treating them as always-overdue against datetime.now() in 2026+.
         try:
-            triggered = datetime.fromisoformat(ctx.timestamp.replace("Z", "+00:00"))
-            hrs = (triggered + timedelta(hours=ctx.sla_hours) - datetime.now()).total_seconds() / 3600
-            if hrs <= 24: p += 2
-            elif hrs <= 48: p += 1
-        except: pass
+            if ctx.timestamp:
+                ts = ctx.timestamp.replace("Z", "").replace("+00:00", "")
+                triggered = datetime.fromisoformat(ts)
+                now = datetime.now()
+                age_days = (now - triggered).days
+
+                if age_days <= 30:  # Only recent exceptions
+                    deadline = triggered + timedelta(hours=ctx.sla_hours)
+                    hrs_remaining = (deadline - now).total_seconds() / 3600
+                    if hrs_remaining <= 0:
+                        p += 2  # overdue
+                    elif hrs_remaining <= 24:
+                        p += 2  # critical
+                    elif hrs_remaining <= 48:
+                        p += 1  # warning
+                else:
+                    logger.info(
+                        f"[INFO] SLA skipped: {age_days}d old (historical Celonis data)"
+                    )
+        except Exception as e:
+            logger.warning(f"[WARN] SLA calc failed: {e}")
+
         return max(1, min(5, p))
 
     def _apply_prompt_guidance(self, routing, priority, confidence, prompt_package):

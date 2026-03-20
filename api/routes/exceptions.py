@@ -13,8 +13,8 @@ class ProcessRequest(BaseModel):
     raw_input: dict
 
 @router.get("/exceptions")
-def list_exceptions(status: Optional[str] = None, limit: int = 50):
-    return [e.to_dict() for e in get_store().list_exceptions(status=status, limit=limit)]
+def list_exceptions(status: Optional[str] = None, limit: int = 200, offset: int = 0):
+    return [e.to_dict() for e in get_store().list_exceptions(status=status, limit=limit, offset=offset)]
 
 @router.get("/exceptions/pending")
 def get_pending():
