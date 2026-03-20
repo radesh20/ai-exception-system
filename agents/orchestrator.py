@@ -64,9 +64,11 @@ class ExceptionOrchestrator:
             duration_ms=ms,
         )
 
-        # Stage 0: Prompt Engineer (NEW)
+        # Stage 0: Prompt Engineer — fetch historical first so vendor patterns
+        # can be included in the prompts for both GPT-4o and rule-based paths.
         t = time.time()
-        prompt_package = self.prompt_engineer.generate(context)
+        historical = self.store.get_historical_cases(context.exception_type)
+        prompt_package = self.prompt_engineer.generate(context, historical_cases=historical)
         ms = int((time.time() - t) * 1000)
         tracer.record(
             "Prompt Engineer",
@@ -85,9 +87,8 @@ class ExceptionOrchestrator:
             {"exception_type": context.exception_type},
         )
 
-        # Step 2: Root Cause
+        # Step 2: Root Cause — reuse historical already fetched above
         t = time.time()
-        historical = self.store.get_historical_cases(context.exception_type)
         root_cause = self.root_cause_agent.analyze(context, historical, prompt_package)
         ms = int((time.time() - t) * 1000)
         tracer.record(
@@ -111,7 +112,7 @@ class ExceptionOrchestrator:
 
         # Step 3: Classifier
         t = time.time()
-        classification = self.classifier.classify(context, root_cause, prompt_package)
+        classification = self.classifier.classify(context, root_cause, prompt_package, historical_cases=historical)
         ms = int((time.time() - t) * 1000)
         tracer.record(
             "Classifier Agent",
@@ -197,6 +198,8 @@ class ExceptionOrchestrator:
                     financial_exposure=exc.context.financial_exposure,
                     exception_uuid=exc.id,
                     erp_recommendation=exc.erp_recommendation,
+                    assigned_team=exc.context.assigned_team,
+                    responsible_team=getattr(exc.classification, "responsible_team", ""),
                 )
             except Exception as e:
                 logger.error(f"[ERROR] Failed to send Teams notification: {e}")

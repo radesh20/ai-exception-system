@@ -27,6 +27,36 @@ STORAGE_PATH    = os.getenv("STORAGE_PATH", "data/db")
 TEAMS_ENABLED     = _bool(os.getenv("TEAMS_ENABLED", "true"))
 TEAMS_WEBHOOK_URL = os.getenv("TEAMS_WEBHOOK_URL", "")
 
+# TODO_TEAMS_CHANNEL: Add webhook URLs here as new teams onboard.
+# Update .env when new channels are created — no code changes needed.
+# Current channels:
+TEAMS_CHANNEL_MAP = {
+    # AP / Accounts Payable team
+    "AP_Team_AC33":    os.getenv("TEAMS_WEBHOOK_AP_AC33",
+                                  os.getenv("TEAMS_WEBHOOK_URL", "")),
+    # Additional team channels — configure in .env when available:
+    # TODO_TEAMS_CHANNEL: Add TEAMS_WEBHOOK_WAREHOUSE to .env for warehouse team
+    "warehouse":       os.getenv("TEAMS_WEBHOOK_WAREHOUSE", ""),
+    # TODO_TEAMS_CHANNEL: Add TEAMS_WEBHOOK_TAX to .env for tax team
+    "tax_team":        os.getenv("TEAMS_WEBHOOK_TAX", ""),
+    # TODO_TEAMS_CHANNEL: Add TEAMS_WEBHOOK_COMPLIANCE to .env for compliance team
+    "compliance_team": os.getenv("TEAMS_WEBHOOK_COMPLIANCE", ""),
+    # TODO_TEAMS_CHANNEL: Add new team channels here as they onboard
+    # "new_team":      os.getenv("TEAMS_WEBHOOK_NEW_TEAM", ""),
+
+    # Priority override — manager escalation channel
+    # TODO_TEAMS_CHANNEL: Add TEAMS_WEBHOOK_MANAGER to .env for manager escalations
+    "manager":         os.getenv("TEAMS_WEBHOOK_MANAGER", ""),
+
+    # Always-available fallback — uses the primary TEAMS_WEBHOOK_URL
+    "DEFAULT":         os.getenv("TEAMS_WEBHOOK_URL", ""),
+}
+
+# Exceptions with priority >= this value also notify the manager channel
+TEAMS_MANAGER_ESCALATION_PRIORITY = int(
+    os.getenv("TEAMS_MANAGER_ESCALATION_PRIORITY", "4")
+)
+
 OUTLOOK_ENABLED       = _bool(os.getenv("OUTLOOK_ENABLED", "false"))
 OUTLOOK_TENANT_ID     = os.getenv("OUTLOOK_TENANT_ID", "")
 OUTLOOK_CLIENT_ID     = os.getenv("OUTLOOK_CLIENT_ID", "")

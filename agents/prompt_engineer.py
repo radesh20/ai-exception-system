@@ -53,24 +53,30 @@ class PromptEngineerAgent:
         "novel_exception": ("SM30", "Manual review and escalation required"),
     }
 
-    def generate(self, context) -> PromptPackage:
+    def generate(self, context, historical_cases=None) -> PromptPackage:
         """
         Generate a PromptPackage for the given exception context.
         Tries GPT-4o first; falls back to rule-based on any failure.
+
+        Args:
+            context: ExceptionContext for the current exception.
+            historical_cases: Optional list of historical case dicts used for
+                              vendor pattern analysis. When provided, vendor
+                              intelligence is included in the prompts.
         """
         if settings.AZURE_OPENAI_ENABLED:
             try:
-                return self._generate_with_gpt4o(context)
+                return self._generate_with_gpt4o(context, historical_cases)
             except Exception as e:
                 logger.error(f"[ERROR] PromptEngineerAgent GPT-4o failed: {e}. Falling back to rule-based.")
 
-        return self._generate_rule_based(context)
+        return self._generate_rule_based(context, historical_cases)
 
     # ------------------------------------------------------------------
     # GPT-4o path
     # ------------------------------------------------------------------
 
-    def _generate_with_gpt4o(self, context) -> PromptPackage:
+    def _generate_with_gpt4o(self, context, historical_cases=None) -> PromptPackage:
         from langchain_openai import AzureChatOpenAI
         from langchain_core.messages import HumanMessage, SystemMessage
 
@@ -82,6 +88,8 @@ class PromptEngineerAgent:
             temperature=0,
         )
 
+        vendor_pattern = self._analyze_vendor_history(context.vendor, historical_cases)
+
         system_prompt = (
             "You are a P2P (Procure-to-Pay) exception management expert. "
             "Your job is to generate precise instructions for three downstream AI agents "
@@ -89,7 +97,12 @@ class PromptEngineerAgent:
             "Return ONLY valid JSON with exactly these keys: "
             "root_cause_prompt, classifier_prompt, action_prompt, context_summary, risk_flags. "
             "risk_flags must be a JSON array of strings. "
-            "Be concise and specific to the exception data provided."
+            "Be concise and specific to the exception data provided.\n\n"
+            "VENDOR HISTORY GUIDANCE:\n"
+            "Use vendor history to determine confidence boost. "
+            "Mixed vendor types -> conservative routing -> prefer human. "
+            "Consistent vendor pattern -> can boost confidence by up to 0.2. "
+            "Unknown vendor -> always route to human."
         )
 
         user_prompt = (
@@ -103,6 +116,7 @@ class PromptEngineerAgent:
             f"- happy_path: {' -> '.join(context.happy_path)}\n"
             f"- severity_score: {context.severity_score}\n"
             f"- compliance_flag: {context.compliance_flag}\n\n"
+            f"Vendor history:\n{vendor_pattern}\n\n"
             "Generate focused instructions for:\n"
             "1. root_cause_prompt: How should the Root Cause Agent focus its analysis?\n"
             "2. classifier_prompt: What factors should guide priority and routing decisions?\n"
@@ -112,9 +126,9 @@ class PromptEngineerAgent:
         )
 
         response = llm.invoke([SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)])
-        return self._parse_gpt4o_response(response.content, context)
+        return self._parse_gpt4o_response(response.content, context, historical_cases)
 
-    def _parse_gpt4o_response(self, raw: str, context) -> PromptPackage:
+    def _parse_gpt4o_response(self, raw: str, context, historical_cases=None) -> PromptPackage:
         import json, re
 
         # Strip markdown code fences if present
@@ -124,7 +138,7 @@ class PromptEngineerAgent:
             data = json.loads(cleaned)
         except json.JSONDecodeError:
             logger.warning("[INFO] PromptEngineerAgent: GPT-4o response not valid JSON, using rule-based.")
-            return self._generate_rule_based(context)
+            return self._generate_rule_based(context, historical_cases)
 
         risk_flags = data.get("risk_flags", [])
         if isinstance(risk_flags, str):
@@ -143,7 +157,7 @@ class PromptEngineerAgent:
     # Rule-based fallback
     # ------------------------------------------------------------------
 
-    def _generate_rule_based(self, context) -> PromptPackage:
+    def _generate_rule_based(self, context, historical_cases=None) -> PromptPackage:
         exc_type = context.exception_type.lower().replace(" ", "_")
         vendor = context.vendor or "unknown"
         exposure = context.financial_exposure
@@ -151,18 +165,22 @@ class PromptEngineerAgent:
 
         erp_tx, erp_desc = self.ERP_MAP.get(exc_type, ("SM30", "Manual review required"))
 
+        vendor_pattern = self._analyze_vendor_history(vendor, historical_cases)
+
         root_cause_prompt = (
             f"Analyze {exc_type} for vendor {vendor}. "
             f"Focus on the deviation at '{deviation}'. "
             f"Check historical cases for the same vendor and exception type. "
-            f"Financial exposure is ${exposure:,.2f} - flag if unusually high."
+            f"Financial exposure is ${exposure:,.2f} - flag if unusually high. "
+            f"Vendor context: {vendor_pattern}"
         )
 
         classifier_prompt = (
             f"Vendor {vendor} has a {exc_type} exception with ${exposure:,.2f} exposure. "
             f"Deviation occurred at '{deviation}'. "
             f"Adjust priority based on exposure level and vendor compliance history. "
-            f"Route to human if confidence is below 0.6 or exposure exceeds $50,000."
+            f"Route to human if confidence is below 0.6 or exposure exceeds $50,000. "
+            f"Vendor pattern: {vendor_pattern}"
         )
 
         action_prompt = (
@@ -186,6 +204,72 @@ class PromptEngineerAgent:
             risk_flags=risk_flags,
             generated_by="rule_based",
         )
+
+    def _analyze_vendor_history(self, vendor: str, historical_cases) -> str:
+        """
+        Analyse historical cases for a vendor and return a human-readable summary
+        suitable for inclusion in GPT-4o prompts or rule-based classifier prompts.
+
+        Args:
+            vendor: Vendor code (e.g. "I9", "N14", "X99").
+            historical_cases: List of historical case dicts (may be None or empty).
+
+        Returns:
+            Human-readable string describing the vendor's exception pattern.
+            For unknown vendors returns a safe "no history" message.
+        """
+        if not vendor or not historical_cases:
+            return (
+                f"Vendor {vendor or 'unknown'} has no historical cases. "
+                "New/rare vendor — recommend human review until pattern emerges."
+            )
+
+        vendor_cases = [c for c in historical_cases if c.get("vendor") == vendor]
+        if not vendor_cases:
+            # TODO_VENDOR_PATTERN: Vendor has no historical cases yet — route to human.
+            return (
+                f"Vendor {vendor} has no historical cases. "
+                "New/rare vendor — recommend human review until pattern emerges."
+            )
+
+        # Count exception types
+        type_counts: dict = {}
+        type_success: dict = {}
+        type_total: dict = {}
+        for case in vendor_cases:
+            exc_type = case.get("exception_type", "unknown")
+            type_counts[exc_type] = type_counts.get(exc_type, 0) + 1
+            # Track resolution success when available
+            resolved = case.get("resolved", case.get("status") in ("completed", "approved"))
+            type_total[exc_type] = type_total.get(exc_type, 0) + 1
+            if resolved:
+                type_success[exc_type] = type_success.get(exc_type, 0) + 1
+
+        total = len(vendor_cases)
+        dominant_type = max(type_counts, key=type_counts.get)
+        dominant_count = type_counts[dominant_type]
+        dominant_pct = dominant_count / total * 100
+        is_mixed = dominant_pct < 80  # < 80% dominant = mixed
+
+        lines = [f"Vendor {vendor} pattern ({total} historical cases):"]
+        for exc_type, count in sorted(type_counts.items(), key=lambda x: -x[1]):
+            pct = count / total * 100
+            success_rate = (
+                type_success.get(exc_type, 0) / type_total[exc_type] * 100
+                if type_total.get(exc_type, 0) > 0
+                else 0
+            )
+            lines.append(
+                f"  - {exc_type}: {count} cases ({pct:.0f}%) | success: {success_rate:.0f}%"
+            )
+
+        lines.append(f"Most common: {dominant_type} ({dominant_pct:.0f}%)")
+        variance = "HIGH" if dominant_pct >= 80 else "MEDIUM" if dominant_pct >= 60 else "LOW"
+        lines.append(f"Variance: {variance} — {'single type detected' if not is_mixed else 'mixed types detected'}")
+        if is_mixed:
+            lines.append(f"Note: Do not assume single exception type for this vendor")
+
+        return "\n".join(lines)
 
     def _build_risk_flags(self, context) -> List[str]:
         flags = []

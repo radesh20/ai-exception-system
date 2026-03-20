@@ -68,11 +68,11 @@ class JsonStore(BaseStore):
                 return ExceptionModel.from_dict(item)
         return None
 
-    def list_exceptions(self, status=None, limit=100):
+    def list_exceptions(self, status=None, limit=500, offset=0):
         data = self._read(self.files["exceptions"])
         if status: data = [d for d in data if d.get("status") == status]
         data.sort(key=lambda x: x.get("created_at", ""), reverse=True)
-        return [ExceptionModel.from_dict(d) for d in data[:limit]]
+        return [ExceptionModel.from_dict(d) for d in data[offset:offset + limit]]
 
     def update_exception(self, exc):
         exc.updated_at = datetime.now().isoformat()
