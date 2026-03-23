@@ -32,7 +32,10 @@ class PathClassifier:
         "Invoice Cleared",
     ]
 
-    # Cases with deviation_score below this are considered happy-path candidates
+    # Cases with deviation_score below this are considered happy-path candidates.
+    # 0.3 represents a low overall deviation signal: path match >=60%, context
+    # deviation <30%, and vendor cycle within normal bounds.  Values above this
+    # indicate enough deviation to warrant the full exception pipeline.
     DEVIATION_THRESHOLD = 0.3
 
     def classify(self, context, process_data: Optional[dict] = None) -> PathClassification:

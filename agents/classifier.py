@@ -149,6 +149,10 @@ class ClassifierAgent:
                         p += 1  # warning
 
                     # Urgency factor: how much of the SLA has been consumed
+                    # SLA consumption >= 80% triggers a priority boost.
+                    # 80% is chosen as the inflection point where remaining buffer (20%)
+                    # is typically insufficient to complete investigation + remediation.
+                    # This mirrors industry-standard escalation triggers in AP workflows.
                     total_sla_hrs = ctx.sla_hours or 48
                     consumed_hrs = total_sla_hrs - hrs_remaining
                     sla_consumption = consumed_hrs / total_sla_hrs if total_sla_hrs else 0.0

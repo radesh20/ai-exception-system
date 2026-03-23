@@ -55,7 +55,7 @@ class ProcessAgentRecommender:
 
         system_prompt = (
             "You are a P2P process improvement expert. "
-            "Analyse the process analytics data provided and recommend exactly 5 to 6 "
+            "Analyze the process analytics data provided and recommend exactly 5 to 6 "
             "AI process agents that would most improve the end-to-end P2P cycle. "
             "Base your recommendations purely on the data — bottlenecks, handoff delays, "
             "failure points, and recurring exception patterns. "

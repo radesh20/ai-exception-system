@@ -49,8 +49,9 @@ class EscalationPredictor:
         # Financial exposure contribution
         exposure_factor = self._exposure_factor(context, process_data)
 
-        # SLA consumption ratio
-        sla_consumed = min(days_open / sla_days, 1.0) if sla_days > 0 else 1.0
+        # Safeguard: sla_consumed is already normalised by the sla_days guard above.
+        # If sla_days is 0 (misconfigured), treat as no consumption to avoid false escalation.
+        sla_consumed = min(days_open / sla_days, 1.0) if sla_days > 0 else 0.0
 
         # Risk score components
         # 1. SLA consumption: higher consumption → higher risk

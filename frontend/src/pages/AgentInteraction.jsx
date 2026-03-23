@@ -2,7 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { ChevronDown, ChevronRight, ArrowDown, Clock } from 'lucide-react';
 import api from '../api';
 
-export default function AgentInteraction() {
+// Maximum characters shown in response preview before user expands the block
+const MAX_PREVIEW_LENGTH = 120;
   const [interactions, setInteractions] = useState([]);
   const [selected, setSelected] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -249,7 +250,7 @@ function AgentStep({ step, index }) {
               fontSize: '12px', color: 'var(--text-secondary)',
               fontStyle: 'italic', paddingLeft: '2px',
             }}>
-              {String(response).slice(0, 120)}{String(response).length > 120 ? '…' : ''}
+          {String(response).slice(0, MAX_PREVIEW_LENGTH)}{String(response).length > MAX_PREVIEW_LENGTH ? '…' : ''}
             </div>
           )}
         </div>
