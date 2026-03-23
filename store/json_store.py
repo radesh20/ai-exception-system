@@ -19,6 +19,7 @@ class JsonStore(BaseStore):
             "agent_recommendations": os.path.join(base_path, "agent_recommendations.json"),
             "agent_interactions": os.path.join(base_path, "agent_interactions.json"),
             "process_insights": os.path.join(base_path, "process_insights.json"),
+            "happy_path_cases": os.path.join(base_path, "happy_path_cases.json"),
         }
 
     def initialize(self):
@@ -257,9 +258,50 @@ class JsonStore(BaseStore):
             insight["recorded_at"] = datetime.now().isoformat()
         self._append_unique(self.files["process_insights"], insight, "id")
 
-    def get_process_insights(self, limit: int = 100) -> list:
+    def save_process_insights(self, case_id: str, insights: dict):
+        """Upsert a process insights record keyed by case_id."""
+        if "id" not in insights:
+            insights["id"] = str(uuid.uuid4())
+        if "recorded_at" not in insights:
+            insights["recorded_at"] = datetime.now().isoformat()
+        insights["case_id"] = case_id
+        self._upsert(self.files["process_insights"], insights, "case_id")
+
+    def get_process_insights(self, limit: int = 200) -> list:
         """Return the most recent process insights."""
         data = self._read(self.files["process_insights"])
         if not isinstance(data, list):
             return []
         return sorted(data, key=lambda x: x.get("recorded_at", ""), reverse=True)[:limit]
+
+    def get_process_insight(self, case_id: str) -> dict:
+        """Return the process insight record for a specific case_id."""
+        for item in self._read(self.files["process_insights"]):
+            if item.get("case_id") == case_id:
+                return item
+        return {}
+
+    # ── Happy Path Cases ──
+    def save_happy_path_case(self, case: dict):
+        """Upsert a happy path case record keyed by context.case_id."""
+        key = (case.get("context") or {}).get("case_id") or case.get("case_id") or case.get("id", "")
+        if not key:
+            key = str(uuid.uuid4())
+        case["_happy_path_key"] = key
+        self._upsert(self.files["happy_path_cases"], case, "_happy_path_key")
+
+    def get_happy_path_cases(self, limit: int = 200, offset: int = 0) -> list:
+        """Return happy path cases sorted by created_at descending."""
+        data = self._read(self.files["happy_path_cases"])
+        if not isinstance(data, list):
+            return []
+        data.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+        return data[offset: offset + limit]
+
+    def get_happy_path_case(self, case_id: str) -> dict:
+        """Return a single happy path case by context.case_id or exception id."""
+        for item in self._read(self.files["happy_path_cases"]):
+            ctx = item.get("context") or {}
+            if ctx.get("case_id") == case_id or item.get("id") == case_id:
+                return item
+        return {}

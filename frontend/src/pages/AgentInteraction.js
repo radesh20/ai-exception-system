@@ -252,7 +252,7 @@ function AgentStep({ step, index }) {
               fontSize: '12px', color: 'var(--text-secondary)',
               fontStyle: 'italic', paddingLeft: '2px',
             }}>
-              {String(response).slice(0, MAX_PREVIEW_LENGTH)}{String(response).length > MAX_PREVIEW_LENGTH ? '…' : ''}
+          {String(response).slice(0, MAX_PREVIEW_LENGTH)}{String(response).length > MAX_PREVIEW_LENGTH ? '…' : ''}
             </div>
           )}
         </div>

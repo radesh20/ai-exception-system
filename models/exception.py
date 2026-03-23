@@ -52,6 +52,40 @@ class Classification:
     responsible_team: str = ""
 
 
+@dataclass
+class PaymentRiskResult:
+    vendor: str
+    due_date: str
+    days_until_due: int
+    historical_processing_days: float
+    days_buffer: float
+    risk_level: str         # "immediate" / "today" / "this_week" / "safe"
+    insight: str
+    recommended_action: str
+
+
+@dataclass
+class SLAMonitorResult:
+    case_id: str
+    sla_hours_total: int
+    sla_hours_consumed: float
+    sla_consumption_pct: float
+    status: str             # "on_track" / "at_risk" / "critical"
+    insight: str
+    recommended_action: str
+
+
+@dataclass
+class ProcessOptimizationResult:
+    case_id: str
+    bottleneck_stage: str
+    avg_stage_time: float
+    current_stage_time: float
+    delay_days: float
+    insight: str
+    recommended_action: str
+
+
 class ExceptionModel:
     def __init__(self, id="", status=ExceptionStatus.NEW, context=None,
                  root_cause=None, classification=None, recommended_action=None,
