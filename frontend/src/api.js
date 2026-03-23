@@ -63,6 +63,13 @@ const api = {
   // Agent Trace
   getTrace:      (id) => req(`/api/exceptions/${id}/trace`),
 
+  // Agent Interactions
+  getAgentInteractions: (params = {}) => {
+    const q = new URLSearchParams(params).toString();
+    return req(`/api/agent-interactions${q ? '?' + q : ''}`);
+  },
+  getAgentInteractionDetail: (exceptionId) => req(`/api/agent-interactions/${exceptionId}`),
+
   // Categories & Batch
   getCategories:       () => req('/api/categories'),
   getCategoryPending:  (cat, limit = 5) => req(`/api/categories/${cat}/pending?limit=${limit}`),

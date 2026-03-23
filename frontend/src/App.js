@@ -10,6 +10,7 @@ import LearningInsights from './pages/LearningInsights';
 import ExceptionDetail from './pages/ExceptionDetail';
 import Settings from './pages/Settings';
 import Classifier from './pages/Classifier';
+import AgentInteraction from './pages/AgentInteraction';
 import api from './api';
 
 function App() {
@@ -42,6 +43,7 @@ function App() {
           <Route path="/classifier" element={<Classifier />} />
           <Route path="/settings" element={<Settings config={config} />} />
           <Route path="/exception/:id" element={<ExceptionDetail />} />
+          <Route path="/agent-interactions" element={<AgentInteraction />} />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </main>

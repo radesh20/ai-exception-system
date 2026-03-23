@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import config.settings as settings
 from api.routes import exceptions, decisions, actions, stats, learning, webhooks
 from api.routes import mcp
+from api.routes import agent_interactions
 
 app = FastAPI(title="P2P Exception Management API", version="1.0.0")
 app.add_middleware(CORSMiddleware, allow_origins=settings.CORS_ORIGINS,
@@ -18,6 +19,7 @@ app.include_router(stats.router, prefix="/api", tags=["Statistics"])
 app.include_router(learning.router, prefix="/api", tags=["Learning"])
 app.include_router(webhooks.router, prefix="/api", tags=["Webhooks"])
 app.include_router(mcp.router, prefix="/api/mcp", tags=["MCP Tools"])
+app.include_router(agent_interactions.router, prefix="/api", tags=["Agent Interactions"])
 
 @app.get("/api/health")
 def health(): 

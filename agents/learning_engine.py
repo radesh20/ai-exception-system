@@ -6,7 +6,7 @@ class LearningEngine:
     def __init__(self, store):
         self.store = store
 
-    def record_feedback(self, decision):
+    def record_feedback(self, decision, case_type: str = "exception"):
         exc = self.store.get_exception(decision.exception_id)
         if not exc: return {"error": "Exception not found"}
         cat = exc.classification.category if exc.classification else "unknown"
@@ -19,7 +19,8 @@ class LearningEngine:
                 "deviation_point": exc.context.deviation_point if exc.context else "",
                 "financial_exposure": exc.context.financial_exposure if exc.context else 0,
                 "recommended_action": decision.original_recommendation, "final_action": decision.final_action,
-                "was_approved": was_approved, "analyst": decision.analyst_name, "timestamp": datetime.now().isoformat(),
+                "was_approved": was_approved, "analyst": decision.analyst_name,
+                "timestamp": datetime.now().isoformat(), "case_type": case_type,
             })
         return {"category": cat, "was_approved": was_approved, "learning_updated": settings.LEARNING_ENABLED}
 

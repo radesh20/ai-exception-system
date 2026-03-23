@@ -8,6 +8,8 @@ from agents.root_cause import RootCauseAgent
 from agents.classifier import ClassifierAgent
 from agents.action_recommender import ActionRecommenderAgent
 from agents.prompt_engineer import PromptEngineerAgent
+from agents.path_classifier import PathClassifier
+from agents.process_aware_prompt_builder import ProcessAwarePromptBuilder
 from agents.tracer import AgentTracer
 from mcp_client import MCPClient
 import logging
@@ -22,11 +24,26 @@ class ExceptionOrchestrator:
         self.root_cause_agent = RootCauseAgent()
         self.classifier = ClassifierAgent()
         self.recommender = ActionRecommenderAgent()
+        self.path_classifier = PathClassifier()
+        self.process_prompt_builder = ProcessAwarePromptBuilder()
         self.deep_agent = None
         self.last_trace = None
         self.mcp_client = MCPClient()
+        self._process_data = None  # cached process analyzer output
         if settings.AZURE_OPENAI_ENABLED:
             self._init_deep_agent()
+        self._init_process_data()
+
+    def _init_process_data(self):
+        """Fetch process analytics once at startup and cache for reuse."""
+        try:
+            from celonis.process_analyzer import ProcessAnalyzer
+            analyzer = ProcessAnalyzer()
+            self._process_data = analyzer.fetch_and_analyze()
+            logger.info("[OK] ExceptionOrchestrator: process analytics cached.")
+        except Exception as exc:
+            logger.warning("[WARN] ExceptionOrchestrator: process analytics unavailable (%s).", exc)
+            self._process_data = {}
 
     def _init_deep_agent(self):
         try:
@@ -64,11 +81,49 @@ class ExceptionOrchestrator:
             duration_ms=ms,
         )
 
+        # Pre-processing: Path Classification
+        t = time.time()
+        path_result = self.path_classifier.classify(context, self._process_data)
+        ms = int((time.time() - t) * 1000)
+        tracer.record(
+            "Path Classifier",
+            f"Case {context.case_id}",
+            f"Route: {path_result.route}, deviation={path_result.deviation_score:.3f}",
+            details={
+                "route": path_result.route,
+                "deviation_score": path_result.deviation_score,
+                "reason": path_result.reason,
+            },
+            duration_ms=ms,
+        )
+
+        if path_result.route == "happy_path":
+            logger.info(
+                "[INFO] ExceptionOrchestrator: case=%s classified as happy_path — skipping exception pipeline.",
+                context.case_id,
+            )
+            exc = ExceptionModel(
+                id=str(uuid.uuid4()),
+                status=ExceptionStatus.COMPLETED,
+                context=context,
+                ai_reasoning=f"Happy path case. {path_result.reason}",
+                recommended_action_params={"agent_trace": tracer.get_summary(), "path_route": "happy_path"},
+            )
+            self.store.save_exception(exc)
+            return exc
+
+        # Pre-processing: Build process-aware prompt context (exception path only)
+        process_context = self.process_prompt_builder.build(context, self._process_data)
+        if process_context:
+            logger.info("[INFO] ExceptionOrchestrator: process context built for case=%s", context.case_id)
+
         # Stage 0: Prompt Engineer — fetch historical first so vendor patterns
         # can be included in the prompts for both GPT-4o and rule-based paths.
         t = time.time()
         historical = self.store.get_historical_cases(context.exception_type)
-        prompt_package = self.prompt_engineer.generate(context, historical_cases=historical)
+        prompt_package = self.prompt_engineer.generate(
+            context, historical_cases=historical, process_context=process_context
+        )
         ms = int((time.time() - t) * 1000)
         tracer.record(
             "Prompt Engineer",
@@ -89,7 +144,9 @@ class ExceptionOrchestrator:
 
         # Step 2: Root Cause — reuse historical already fetched above
         t = time.time()
-        root_cause = self.root_cause_agent.analyze(context, historical, prompt_package)
+        root_cause = self.root_cause_agent.analyze(
+            context, historical, prompt_package, vendor_turnaround=self._process_data
+        )
         ms = int((time.time() - t) * 1000)
         tracer.record(
             "Root Cause Agent",
@@ -112,7 +169,10 @@ class ExceptionOrchestrator:
 
         # Step 3: Classifier
         t = time.time()
-        classification = self.classifier.classify(context, root_cause, prompt_package, historical_cases=historical)
+        classification = self.classifier.classify(
+            context, root_cause, prompt_package,
+            historical_cases=historical, process_data=self._process_data
+        )
         ms = int((time.time() - t) * 1000)
         tracer.record(
             "Classifier Agent",
@@ -137,7 +197,7 @@ class ExceptionOrchestrator:
         t = time.time()
         policies = self.store.get_policies(classification.category)
         action_type, action_params, reasoning, erp_recommendation = self.recommender.recommend(
-            context, classification, policies, prompt_package
+            context, classification, policies, prompt_package, process_data=self._process_data
         )
         ms = int((time.time() - t) * 1000)
         tracer.record(

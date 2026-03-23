@@ -15,6 +15,10 @@ class JsonStore(BaseStore):
             "historical": os.path.join(base_path, "historical.json"),
             "policies":   os.path.join(base_path, "policies.json"),
             "processed_cases": os.path.join(base_path, "processed_celonis_cases.json"),
+            "process_turnaround": os.path.join(base_path, "process_turnaround.json"),
+            "agent_recommendations": os.path.join(base_path, "agent_recommendations.json"),
+            "agent_interactions": os.path.join(base_path, "agent_interactions.json"),
+            "process_insights": os.path.join(base_path, "process_insights.json"),
         }
 
     def initialize(self):
@@ -204,3 +208,58 @@ class JsonStore(BaseStore):
             "approval_rate": round(approved / max(len(dec), 1), 3),
             "total_actions": len(act), "by_category": by_cat, "by_status": by_status,
         }
+
+    # ── Process Turnaround ──
+    def save_process_turnaround(self, data: dict):
+        """Overwrite the full process turnaround snapshot."""
+        self._write(self.files["process_turnaround"], data)
+
+    def get_process_turnaround(self) -> dict:
+        """Return the latest process turnaround snapshot (dict) or empty dict."""
+        raw = self._read(self.files["process_turnaround"])
+        if isinstance(raw, dict):
+            return raw
+        # File was initialised as [] — return empty dict
+        return {}
+
+    # ── Agent Recommendations ──
+    def save_agent_recommendations(self, recommendations: list):
+        """Overwrite the agent recommendations list."""
+        self._write(self.files["agent_recommendations"], recommendations)
+
+    def get_agent_recommendations(self) -> list:
+        """Return the latest agent recommendations list."""
+        raw = self._read(self.files["agent_recommendations"])
+        return raw if isinstance(raw, list) else []
+
+    # ── Agent Interaction Traces ──
+    def save_agent_interaction(self, interaction: dict):
+        """Append a full agent interaction trace record."""
+        if "id" not in interaction:
+            interaction["id"] = str(uuid.uuid4())
+        self._append_unique(self.files["agent_interactions"], interaction, "id")
+
+    def get_agent_interactions(self, exception_id: str = None) -> list:
+        """Return all agent interaction traces, optionally filtered by exception_id."""
+        data = self._read(self.files["agent_interactions"])
+        if not isinstance(data, list):
+            return []
+        if exception_id:
+            return [d for d in data if d.get("exception_id") == exception_id]
+        return data
+
+    # ── Process Insights ──
+    def save_process_insight(self, insight: dict):
+        """Append a process insight record."""
+        if "id" not in insight:
+            insight["id"] = str(uuid.uuid4())
+        if "recorded_at" not in insight:
+            insight["recorded_at"] = datetime.now().isoformat()
+        self._append_unique(self.files["process_insights"], insight, "id")
+
+    def get_process_insights(self, limit: int = 100) -> list:
+        """Return the most recent process insights."""
+        data = self._read(self.files["process_insights"])
+        if not isinstance(data, list):
+            return []
+        return sorted(data, key=lambda x: x.get("recorded_at", ""), reverse=True)[:limit]

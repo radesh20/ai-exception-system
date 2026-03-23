@@ -13,12 +13,12 @@ class ClassifierAgent:
     # TODO_VENDOR_PATTERN: Add manual hints here ONLY when historical confidence is HIGH
     # e.g. after observing 50+ consistent cases for a vendor.
 
-    def classify(self, context, root_cause, prompt_package=None, historical_cases=None):
+    def classify(self, context, root_cause, prompt_package=None, historical_cases=None, process_data: dict = None):
         cat = self._normalize_exception_type(context.exception_type)
         is_novel = self._is_truly_novel(cat, root_cause)
         if is_novel:
             cat = "novel_exception"
-        priority = self._priority(context)
+        priority = self._priority(context, process_data)
 
         # Confidence boost comes ONLY from prompt_package (vendor intelligence
         # from GPT-4o or rule-based path — NOT from hardcoded vendor assumptions).
@@ -121,7 +121,7 @@ class ClassifierAgent:
 
         return context.assigned_team or ""
 
-    def _priority(self, ctx):
+    def _priority(self, ctx, process_data: dict = None):
         p = 1
         if ctx.financial_exposure > 100000: p += 2
         elif ctx.financial_exposure > 50000: p += 1
@@ -147,12 +147,29 @@ class ClassifierAgent:
                         p += 2  # critical
                     elif hrs_remaining <= 48:
                         p += 1  # warning
+
+                    # Urgency factor: how much of the SLA has been consumed
+                    total_sla_hrs = ctx.sla_hours or 48
+                    consumed_hrs = total_sla_hrs - hrs_remaining
+                    sla_consumption = consumed_hrs / total_sla_hrs if total_sla_hrs else 0.0
+                    if sla_consumption >= 0.8:
+                        p += 1  # >=80% SLA consumed — boost priority
+                        logger.info(
+                            "[INFO] ClassifierAgent: SLA consumption %.0f%% — priority boosted for case %s",
+                            sla_consumption * 100, ctx.case_id,
+                        )
                 else:
                     logger.info(
                         f"[INFO] SLA skipped: {age_days}d old (historical Celonis data)"
                     )
         except Exception as e:
             logger.warning(f"[WARN] SLA calc failed: {e}")
+
+        # Historical resolution time urgency: if case has been open longer than
+        # the historical average resolution time for this vendor/exception type.
+        if process_data:
+            hist_urgency = self._historical_urgency_boost(ctx, process_data)
+            p += hist_urgency
 
         return max(1, min(5, p))
 
@@ -172,3 +189,30 @@ class ClassifierAgent:
             if "high priority" in prompt_lower or "critical" in prompt_lower:
                 priority = min(5, priority + 1)
         return routing, priority
+
+    def _historical_urgency_boost(self, ctx, process_data: dict) -> int:
+        """
+        Return +1 priority boost when the case has been open longer than
+        the historical average resolution time for this exception type / vendor.
+        """
+        try:
+            exc_stats = (process_data.get("exception_type_stats") or {}).get(
+                ctx.exception_type, {}
+            )
+            hist_days = exc_stats.get("avg_resolution_days")
+            if not hist_days or hist_days <= 0:
+                return 0
+
+            if ctx.timestamp:
+                ts = ctx.timestamp.replace("Z", "").replace("+00:00", "")
+                triggered = datetime.fromisoformat(ts)
+                age_days = (datetime.now() - triggered).total_seconds() / 86400
+                if age_days > hist_days:
+                    logger.info(
+                        "[INFO] ClassifierAgent: case open %.1fd exceeds historical avg %.1fd — priority +1",
+                        age_days, hist_days,
+                    )
+                    return 1
+        except Exception as exc:
+            logger.warning("[WARN] ClassifierAgent: historical urgency calc failed: %s", exc)
+        return 0
