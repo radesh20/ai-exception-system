@@ -2,12 +2,14 @@ import uuid
 import time
 from datetime import datetime
 import config.settings as settings
-from models import ExceptionModel, ExceptionStatus
+from models import ExceptionModel, ExceptionStatus, Classification
 from agents.context_builder import ContextBuilderAgent
 from agents.root_cause import RootCauseAgent
 from agents.classifier import ClassifierAgent
 from agents.action_recommender import ActionRecommenderAgent
 from agents.prompt_engineer import PromptEngineerAgent
+from agents.path_classifier import PathClassifier
+from agents.process_aware_prompt_builder import ProcessAwarePromptBuilder
 from agents.tracer import AgentTracer
 from mcp_client import MCPClient
 import logging
@@ -22,11 +24,26 @@ class ExceptionOrchestrator:
         self.root_cause_agent = RootCauseAgent()
         self.classifier = ClassifierAgent()
         self.recommender = ActionRecommenderAgent()
+        self.path_classifier = PathClassifier()
+        self.process_prompt_builder = ProcessAwarePromptBuilder()
         self.deep_agent = None
         self.last_trace = None
         self.mcp_client = MCPClient()
+        self._process_data = None  # cached process analyzer output
         if settings.AZURE_OPENAI_ENABLED:
             self._init_deep_agent()
+        self._init_process_data()
+
+    def _init_process_data(self):
+        """Fetch process analytics once at startup and cache for reuse."""
+        try:
+            from celonis.process_analyzer import ProcessAnalyzer
+            analyzer = ProcessAnalyzer()
+            self._process_data = analyzer.fetch_and_analyze()
+            logger.info("[OK] ExceptionOrchestrator: process analytics cached.")
+        except Exception as exc:
+            logger.warning("[WARN] ExceptionOrchestrator: process analytics unavailable (%s).", exc)
+            self._process_data = {}
 
     def _init_deep_agent(self):
         try:
@@ -64,11 +81,140 @@ class ExceptionOrchestrator:
             duration_ms=ms,
         )
 
+        # Pre-processing: Path Classification
+        t = time.time()
+        path_result = self.path_classifier.classify(context, self._process_data)
+        ms = int((time.time() - t) * 1000)
+        tracer.record(
+            "Path Classifier",
+            f"Case {context.case_id}",
+            f"Route: {path_result.route}, deviation={path_result.deviation_score:.3f}",
+            details={
+                "route": path_result.route,
+                "deviation_score": path_result.deviation_score,
+                "reason": path_result.reason,
+            },
+            duration_ms=ms,
+        )
+
+        if path_result.route == "happy_path":
+            logger.info(
+                "[INFO] ExceptionOrchestrator: case=%s classified as happy_path — skipping exception pipeline.",
+                context.case_id,
+            )
+            happy_classification = Classification(
+                category="happy_path",
+                priority=1,
+                is_novel=False,
+                routing="auto",
+                confidence=1.0,
+                responsible_team=context.assigned_team,
+            )
+            exc = ExceptionModel(
+                id=str(uuid.uuid4()),
+                status=ExceptionStatus.COMPLETED,
+                context=context,
+                classification=happy_classification,
+                ai_reasoning=f"Happy path case. {path_result.reason}",
+                recommended_action_params={"agent_trace": tracer.get_summary(), "path_route": "happy_path"},
+            )
+            self.store.save_exception(exc)
+
+            # Run happy path insight agents and persist results
+            try:
+                from agents.payment_risk_agent import PaymentRiskAgent
+                from agents.sla_monitor_agent import SLAMonitorAgent
+                from agents.process_optimization_agent import ProcessOptimizationAgent
+
+                t = time.time()
+                payment_risk = PaymentRiskAgent().analyze(context, self._process_data or {})
+                ms = int((time.time() - t) * 1000)
+                tracer.record(
+                    "Payment Risk Agent",
+                    f"Case {context.case_id}, vendor={context.vendor}",
+                    f"risk_level={payment_risk.risk_level}, days_buffer={payment_risk.days_buffer}",
+                    details={
+                        "risk_level": payment_risk.risk_level,
+                        "days_until_due": payment_risk.days_until_due,
+                        "insight": payment_risk.insight,
+                    },
+                    duration_ms=ms,
+                )
+
+                t = time.time()
+                sla_result = SLAMonitorAgent().analyze(context, self._process_data or {})
+                ms = int((time.time() - t) * 1000)
+                tracer.record(
+                    "SLA Monitor Agent",
+                    f"Case {context.case_id}, sla_hours={context.sla_hours}",
+                    f"status={sla_result.status}, consumed={sla_result.sla_consumption_pct:.1f}%",
+                    details={
+                        "status": sla_result.status,
+                        "sla_consumption_pct": sla_result.sla_consumption_pct,
+                        "insight": sla_result.insight,
+                    },
+                    duration_ms=ms,
+                )
+
+                t = time.time()
+                optimization = ProcessOptimizationAgent().analyze(context, self._process_data or {})
+                ms = int((time.time() - t) * 1000)
+                tracer.record(
+                    "Process Optimization Agent",
+                    f"Case {context.case_id}, type={context.exception_type}",
+                    f"bottleneck={optimization.bottleneck_stage}, delay={optimization.delay_days:.1f}d",
+                    details={
+                        "bottleneck_stage": optimization.bottleneck_stage,
+                        "delay_days": optimization.delay_days,
+                        "insight": optimization.insight,
+                    },
+                    duration_ms=ms,
+                )
+
+                insights_record = {
+                    "case_id": context.case_id,
+                    "exception_id": exc.id,
+                    "vendor": context.vendor,
+                    "payment_risk": payment_risk.__dict__,
+                    "sla_monitor": sla_result.__dict__,
+                    "process_optimization": optimization.__dict__,
+                    "recorded_at": datetime.now().isoformat(),
+                }
+                self.store.save_process_insights(context.case_id, insights_record)
+                logger.info(
+                    "[OK] ExceptionOrchestrator: happy path insights saved for case=%s", context.case_id
+                )
+
+                # Also save as a happy path case record
+                happy_case = exc.to_dict()
+                happy_case["path_result"] = {
+                    "route": path_result.route,
+                    "deviation_score": path_result.deviation_score,
+                    "reason": path_result.reason,
+                }
+                happy_case["insights"] = insights_record
+                self.store.save_happy_path_case(happy_case)
+
+            except Exception as exc_agents:
+                logger.error(
+                    "[ERROR] ExceptionOrchestrator: happy path agents failed for case=%s: %s",
+                    context.case_id, exc_agents,
+                )
+
+            return exc
+
+        # Pre-processing: Build process-aware prompt context (exception path only)
+        process_context = self.process_prompt_builder.build(context, self._process_data)
+        if process_context:
+            logger.info("[INFO] ExceptionOrchestrator: process context built for case=%s", context.case_id)
+
         # Stage 0: Prompt Engineer — fetch historical first so vendor patterns
         # can be included in the prompts for both GPT-4o and rule-based paths.
         t = time.time()
         historical = self.store.get_historical_cases(context.exception_type)
-        prompt_package = self.prompt_engineer.generate(context, historical_cases=historical)
+        prompt_package = self.prompt_engineer.generate(
+            context, historical_cases=historical, process_context=process_context
+        )
         ms = int((time.time() - t) * 1000)
         tracer.record(
             "Prompt Engineer",
@@ -89,7 +235,9 @@ class ExceptionOrchestrator:
 
         # Step 2: Root Cause — reuse historical already fetched above
         t = time.time()
-        root_cause = self.root_cause_agent.analyze(context, historical, prompt_package)
+        root_cause = self.root_cause_agent.analyze(
+            context, historical, prompt_package, vendor_turnaround=self._process_data
+        )
         ms = int((time.time() - t) * 1000)
         tracer.record(
             "Root Cause Agent",
@@ -112,7 +260,10 @@ class ExceptionOrchestrator:
 
         # Step 3: Classifier
         t = time.time()
-        classification = self.classifier.classify(context, root_cause, prompt_package, historical_cases=historical)
+        classification = self.classifier.classify(
+            context, root_cause, prompt_package,
+            historical_cases=historical, process_data=self._process_data
+        )
         ms = int((time.time() - t) * 1000)
         tracer.record(
             "Classifier Agent",
@@ -137,7 +288,7 @@ class ExceptionOrchestrator:
         t = time.time()
         policies = self.store.get_policies(classification.category)
         action_type, action_params, reasoning, erp_recommendation = self.recommender.recommend(
-            context, classification, policies, prompt_package
+            context, classification, policies, prompt_package, process_data=self._process_data
         )
         ms = int((time.time() - t) * 1000)
         tracer.record(

@@ -10,17 +10,26 @@ import LearningInsights from './pages/LearningInsights';
 import ExceptionDetail from './pages/ExceptionDetail';
 import Settings from './pages/Settings';
 import Classifier from './pages/Classifier';
+import AgentInteraction from './pages/AgentInteraction';
+import HappyPathCases from './pages/HappyPathCases';
+import HappyPathDetail from './pages/HappyPathDetail';
+import ProcessInsights from './pages/ProcessInsights';
+import ProcessAgents from './pages/ProcessAgents';
 import api from './api';
 
 function App() {
   const [config, setConfig] = useState(null);
   const [pendingCount, setPendingCount] = useState(0);
+  const [alertCount, setAlertCount] = useState(0);
 
   useEffect(() => {
     api.getConfig().then(c => { if (c) setConfig(c); }).catch(() => { });
     const refresh = () => {
       api.getPending().then(d => {
         if (Array.isArray(d)) setPendingCount(d.length);
+      }).catch(() => { });
+      api.getProcessInsightAlerts().then(d => {
+        if (Array.isArray(d)) setAlertCount(d.length);
       }).catch(() => { });
     };
     refresh();
@@ -30,7 +39,7 @@ function App() {
 
   return (
     <div className="app">
-      <Navbar pendingCount={pendingCount} />
+      <Navbar pendingCount={pendingCount} alertCount={alertCount} />
       <main className="main">
         <Routes>
           <Route path="/" element={<Dashboard config={config} />} />
@@ -42,6 +51,12 @@ function App() {
           <Route path="/classifier" element={<Classifier />} />
           <Route path="/settings" element={<Settings config={config} />} />
           <Route path="/exception/:id" element={<ExceptionDetail />} />
+          <Route path="/agent-interactions" element={<AgentInteraction />} />
+          <Route path="/happy-path" element={<HappyPathCases />} />
+          <Route path="/happy-path/:id" element={<HappyPathDetail />} />
+          <Route path="/process-insights" element={<ProcessInsights />} />
+          <Route path="/process-agents" element={<ProcessAgents />} />
+          <Route path="/process-agents/:caseId" element={<ProcessAgents />} />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </main>

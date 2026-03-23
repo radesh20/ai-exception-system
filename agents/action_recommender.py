@@ -49,11 +49,16 @@ class ActionRecommenderAgent:
         },
     }
 
-    def recommend(self, context, classification, policies, prompt_package=None):
+    def recommend(self, context, classification, policies, prompt_package=None, process_data: dict = None):
         matching = [p for p in policies if p.get("category") == classification.category]
         if not matching:
             action = self.DEFAULTS.get(classification.category, "escalate_to_human")
             reasoning = f"No policy for {classification.category}. Default: {action}."
+            if prompt_package and prompt_package.action_prompt:
+                reasoning = f"{reasoning} [AI guidance: {prompt_package.action_prompt}]"
+            urgency_note = self._urgency_note(context, process_data)
+            if urgency_note:
+                reasoning = f"{reasoning} {urgency_note}"
             erp = self._build_erp_recommendation(classification.category, context, prompt_package)
             return action, {"exception_id": context.case_id}, reasoning, erp
 
@@ -67,8 +72,37 @@ class ActionRecommenderAgent:
             reasoning = f"{reasoning} [AI guidance: {prompt_package.action_prompt}]"
             logger.info("[INFO] ActionRecommenderAgent: applied prompt_package guidance.")
 
+        urgency_note = self._urgency_note(context, process_data)
+        if urgency_note:
+            reasoning = f"{reasoning} {urgency_note}"
+
         erp = self._build_erp_recommendation(classification.category, context, prompt_package)
         return action, params, reasoning, erp
+
+    def _urgency_note(self, context, process_data: dict) -> str:
+        """
+        Build an urgency note when historical resolution time is close
+        to remaining SLA time.
+        """
+        if not process_data:
+            return ""
+        try:
+            exc_stats = (process_data.get("exception_type_stats") or {}).get(
+                context.exception_type, {}
+            )
+            hist_days = exc_stats.get("avg_resolution_days")
+            if not hist_days or hist_days <= 0:
+                return ""
+
+            sla_days = (context.sla_hours or 48) / 24.0
+            if hist_days >= sla_days * 0.75:
+                return (
+                    f"Resolve today — historical resolution takes {hist_days:.1f} days "
+                    f"and SLA expires in {sla_days:.1f} days."
+                )
+        except Exception:
+            pass
+        return ""
 
     def _build_erp_recommendation(self, category, context, prompt_package):
         """Build an ERP recommendation dict for the given exception category."""

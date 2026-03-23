@@ -15,6 +15,11 @@ class JsonStore(BaseStore):
             "historical": os.path.join(base_path, "historical.json"),
             "policies":   os.path.join(base_path, "policies.json"),
             "processed_cases": os.path.join(base_path, "processed_celonis_cases.json"),
+            "process_turnaround": os.path.join(base_path, "process_turnaround.json"),
+            "agent_recommendations": os.path.join(base_path, "agent_recommendations.json"),
+            "agent_interactions": os.path.join(base_path, "agent_interactions.json"),
+            "process_insights": os.path.join(base_path, "process_insights.json"),
+            "happy_path_cases": os.path.join(base_path, "happy_path_cases.json"),
         }
 
     def initialize(self):
@@ -204,3 +209,99 @@ class JsonStore(BaseStore):
             "approval_rate": round(approved / max(len(dec), 1), 3),
             "total_actions": len(act), "by_category": by_cat, "by_status": by_status,
         }
+
+    # ── Process Turnaround ──
+    def save_process_turnaround(self, data: dict):
+        """Overwrite the full process turnaround snapshot."""
+        self._write(self.files["process_turnaround"], data)
+
+    def get_process_turnaround(self) -> dict:
+        """Return the latest process turnaround snapshot (dict) or empty dict."""
+        raw = self._read(self.files["process_turnaround"])
+        if isinstance(raw, dict):
+            return raw
+        # File was initialised as [] — return empty dict
+        return {}
+
+    # ── Agent Recommendations ──
+    def save_agent_recommendations(self, recommendations: list):
+        """Overwrite the agent recommendations list."""
+        self._write(self.files["agent_recommendations"], recommendations)
+
+    def get_agent_recommendations(self) -> list:
+        """Return the latest agent recommendations list."""
+        raw = self._read(self.files["agent_recommendations"])
+        return raw if isinstance(raw, list) else []
+
+    # ── Agent Interaction Traces ──
+    def save_agent_interaction(self, interaction: dict):
+        """Append a full agent interaction trace record."""
+        if "id" not in interaction:
+            interaction["id"] = str(uuid.uuid4())
+        self._append_unique(self.files["agent_interactions"], interaction, "id")
+
+    def get_agent_interactions(self, exception_id: str = None) -> list:
+        """Return all agent interaction traces, optionally filtered by exception_id."""
+        data = self._read(self.files["agent_interactions"])
+        if not isinstance(data, list):
+            return []
+        if exception_id:
+            return [d for d in data if d.get("exception_id") == exception_id]
+        return data
+
+    # ── Process Insights ──
+    def save_process_insight(self, insight: dict):
+        """Append a process insight record."""
+        if "id" not in insight:
+            insight["id"] = str(uuid.uuid4())
+        if "recorded_at" not in insight:
+            insight["recorded_at"] = datetime.now().isoformat()
+        self._append_unique(self.files["process_insights"], insight, "id")
+
+    def save_process_insights(self, case_id: str, insights: dict):
+        """Upsert a process insights record keyed by case_id."""
+        if "id" not in insights:
+            insights["id"] = str(uuid.uuid4())
+        if "recorded_at" not in insights:
+            insights["recorded_at"] = datetime.now().isoformat()
+        insights["case_id"] = case_id
+        self._upsert(self.files["process_insights"], insights, "case_id")
+
+    def get_process_insights(self, limit: int = 200) -> list:
+        """Return the most recent process insights."""
+        data = self._read(self.files["process_insights"])
+        if not isinstance(data, list):
+            return []
+        return sorted(data, key=lambda x: x.get("recorded_at", ""), reverse=True)[:limit]
+
+    def get_process_insight(self, case_id: str) -> dict:
+        """Return the process insight record for a specific case_id."""
+        for item in self._read(self.files["process_insights"]):
+            if item.get("case_id") == case_id:
+                return item
+        return {}
+
+    # ── Happy Path Cases ──
+    def save_happy_path_case(self, case: dict):
+        """Upsert a happy path case record keyed by context.case_id."""
+        key = (case.get("context") or {}).get("case_id") or case.get("case_id") or case.get("id", "")
+        if not key:
+            key = str(uuid.uuid4())
+        case["_happy_path_key"] = key
+        self._upsert(self.files["happy_path_cases"], case, "_happy_path_key")
+
+    def get_happy_path_cases(self, limit: int = 200, offset: int = 0) -> list:
+        """Return happy path cases sorted by created_at descending."""
+        data = self._read(self.files["happy_path_cases"])
+        if not isinstance(data, list):
+            return []
+        data.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+        return data[offset: offset + limit]
+
+    def get_happy_path_case(self, case_id: str) -> dict:
+        """Return a single happy path case by context.case_id or exception id."""
+        for item in self._read(self.files["happy_path_cases"]):
+            ctx = item.get("context") or {}
+            if ctx.get("case_id") == case_id or item.get("id") == case_id:
+                return item
+        return {}

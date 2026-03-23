@@ -53,7 +53,7 @@ class PromptEngineerAgent:
         "novel_exception": ("SM30", "Manual review and escalation required"),
     }
 
-    def generate(self, context, historical_cases=None) -> PromptPackage:
+    def generate(self, context, historical_cases=None, process_context: str = "") -> PromptPackage:
         """
         Generate a PromptPackage for the given exception context.
         Tries GPT-4o first; falls back to rule-based on any failure.
@@ -63,20 +63,25 @@ class PromptEngineerAgent:
             historical_cases: Optional list of historical case dicts used for
                               vendor pattern analysis. When provided, vendor
                               intelligence is included in the prompts.
+            process_context: Optional process-aware context string produced by
+                             ProcessAwarePromptBuilder.  When provided it is
+                             included in both GPT-4o system prompt and the
+                             rule-based fallback so downstream agents receive
+                             process-aware instructions.
         """
         if settings.AZURE_OPENAI_ENABLED:
             try:
-                return self._generate_with_gpt4o(context, historical_cases)
+                return self._generate_with_gpt4o(context, historical_cases, process_context)
             except Exception as e:
                 logger.error(f"[ERROR] PromptEngineerAgent GPT-4o failed: {e}. Falling back to rule-based.")
 
-        return self._generate_rule_based(context, historical_cases)
+        return self._generate_rule_based(context, historical_cases, process_context)
 
     # ------------------------------------------------------------------
     # GPT-4o path
     # ------------------------------------------------------------------
 
-    def _generate_with_gpt4o(self, context, historical_cases=None) -> PromptPackage:
+    def _generate_with_gpt4o(self, context, historical_cases=None, process_context: str = "") -> PromptPackage:
         from langchain_openai import AzureChatOpenAI
         from langchain_core.messages import HumanMessage, SystemMessage
 
@@ -104,6 +109,9 @@ class PromptEngineerAgent:
             "Consistent vendor pattern -> can boost confidence by up to 0.2. "
             "Unknown vendor -> always route to human."
         )
+
+        if process_context:
+            system_prompt += f"\n\nPROCESS CONTEXT:\n{process_context}"
 
         user_prompt = (
             f"Exception context:\n"
@@ -157,7 +165,7 @@ class PromptEngineerAgent:
     # Rule-based fallback
     # ------------------------------------------------------------------
 
-    def _generate_rule_based(self, context, historical_cases=None) -> PromptPackage:
+    def _generate_rule_based(self, context, historical_cases=None, process_context: str = "") -> PromptPackage:
         exc_type = context.exception_type.lower().replace(" ", "_")
         vendor = context.vendor or "unknown"
         exposure = context.financial_exposure
@@ -167,12 +175,15 @@ class PromptEngineerAgent:
 
         vendor_pattern = self._analyze_vendor_history(vendor, historical_cases)
 
+        process_note = f" Process context: {process_context}" if process_context else ""
+
         root_cause_prompt = (
             f"Analyze {exc_type} for vendor {vendor}. "
             f"Focus on the deviation at '{deviation}'. "
             f"Check historical cases for the same vendor and exception type. "
             f"Financial exposure is ${exposure:,.2f} - flag if unusually high. "
             f"Vendor context: {vendor_pattern}"
+            f"{process_note}"
         )
 
         classifier_prompt = (
@@ -181,12 +192,14 @@ class PromptEngineerAgent:
             f"Adjust priority based on exposure level and vendor compliance history. "
             f"Route to human if confidence is below 0.6 or exposure exceeds $50,000. "
             f"Vendor pattern: {vendor_pattern}"
+            f"{process_note}"
         )
 
         action_prompt = (
             f"For {exc_type} exceptions, consider SAP transaction {erp_tx} ({erp_desc}). "
             f"Vendor {vendor} exposure is ${exposure:,.2f}. "
             f"If unresolved within 48 hours escalate to the assigned team manager."
+            f"{process_note}"
         )
 
         context_summary = (
