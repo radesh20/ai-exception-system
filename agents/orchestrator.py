@@ -2,7 +2,7 @@ import uuid
 import time
 from datetime import datetime
 import config.settings as settings
-from models import ExceptionModel, ExceptionStatus
+from models import ExceptionModel, ExceptionStatus, Classification
 from agents.context_builder import ContextBuilderAgent
 from agents.root_cause import RootCauseAgent
 from agents.classifier import ClassifierAgent
@@ -102,14 +102,105 @@ class ExceptionOrchestrator:
                 "[INFO] ExceptionOrchestrator: case=%s classified as happy_path — skipping exception pipeline.",
                 context.case_id,
             )
+            happy_classification = Classification(
+                category="happy_path",
+                priority=1,
+                is_novel=False,
+                routing="auto",
+                confidence=1.0,
+                responsible_team=context.assigned_team,
+            )
             exc = ExceptionModel(
                 id=str(uuid.uuid4()),
                 status=ExceptionStatus.COMPLETED,
                 context=context,
+                classification=happy_classification,
                 ai_reasoning=f"Happy path case. {path_result.reason}",
                 recommended_action_params={"agent_trace": tracer.get_summary(), "path_route": "happy_path"},
             )
             self.store.save_exception(exc)
+
+            # Run happy path insight agents and persist results
+            try:
+                from agents.payment_risk_agent import PaymentRiskAgent
+                from agents.sla_monitor_agent import SLAMonitorAgent
+                from agents.process_optimization_agent import ProcessOptimizationAgent
+
+                t = time.time()
+                payment_risk = PaymentRiskAgent().analyze(context, self._process_data or {})
+                ms = int((time.time() - t) * 1000)
+                tracer.record(
+                    "Payment Risk Agent",
+                    f"Case {context.case_id}, vendor={context.vendor}",
+                    f"risk_level={payment_risk.risk_level}, days_buffer={payment_risk.days_buffer}",
+                    details={
+                        "risk_level": payment_risk.risk_level,
+                        "days_until_due": payment_risk.days_until_due,
+                        "insight": payment_risk.insight,
+                    },
+                    duration_ms=ms,
+                )
+
+                t = time.time()
+                sla_result = SLAMonitorAgent().analyze(context, self._process_data or {})
+                ms = int((time.time() - t) * 1000)
+                tracer.record(
+                    "SLA Monitor Agent",
+                    f"Case {context.case_id}, sla_hours={context.sla_hours}",
+                    f"status={sla_result.status}, consumed={sla_result.sla_consumption_pct:.1f}%",
+                    details={
+                        "status": sla_result.status,
+                        "sla_consumption_pct": sla_result.sla_consumption_pct,
+                        "insight": sla_result.insight,
+                    },
+                    duration_ms=ms,
+                )
+
+                t = time.time()
+                optimization = ProcessOptimizationAgent().analyze(context, self._process_data or {})
+                ms = int((time.time() - t) * 1000)
+                tracer.record(
+                    "Process Optimization Agent",
+                    f"Case {context.case_id}, type={context.exception_type}",
+                    f"bottleneck={optimization.bottleneck_stage}, delay={optimization.delay_days:.1f}d",
+                    details={
+                        "bottleneck_stage": optimization.bottleneck_stage,
+                        "delay_days": optimization.delay_days,
+                        "insight": optimization.insight,
+                    },
+                    duration_ms=ms,
+                )
+
+                insights_record = {
+                    "case_id": context.case_id,
+                    "exception_id": exc.id,
+                    "vendor": context.vendor,
+                    "payment_risk": payment_risk.__dict__,
+                    "sla_monitor": sla_result.__dict__,
+                    "process_optimization": optimization.__dict__,
+                    "recorded_at": datetime.now().isoformat(),
+                }
+                self.store.save_process_insights(context.case_id, insights_record)
+                logger.info(
+                    "[OK] ExceptionOrchestrator: happy path insights saved for case=%s", context.case_id
+                )
+
+                # Also save as a happy path case record
+                happy_case = exc.to_dict()
+                happy_case["path_result"] = {
+                    "route": path_result.route,
+                    "deviation_score": path_result.deviation_score,
+                    "reason": path_result.reason,
+                }
+                happy_case["insights"] = insights_record
+                self.store.save_happy_path_case(happy_case)
+
+            except Exception as exc_agents:
+                logger.error(
+                    "[ERROR] ExceptionOrchestrator: happy path agents failed for case=%s: %s",
+                    context.case_id, exc_agents,
+                )
+
             return exc
 
         # Pre-processing: Build process-aware prompt context (exception path only)

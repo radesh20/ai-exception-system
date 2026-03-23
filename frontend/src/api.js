@@ -70,6 +70,24 @@ const api = {
   },
   getAgentInteractionDetail: (exceptionId) => req(`/api/agent-interactions/${exceptionId}`),
 
+  // Happy Path
+  getHappyPathCases: (params = {}) => {
+    const q = new URLSearchParams(params).toString();
+    return req(`/api/happy-path${q ? '?' + q : ''}`);
+  },
+  getHappyPathCase: (id) => req(`/api/happy-path/${id}`),
+
+  // Process Insights
+  getProcessInsights: (params = {}) => {
+    const q = new URLSearchParams(params).toString();
+    return req(`/api/process-insights${q ? '?' + q : ''}`);
+  },
+  getProcessInsightAlerts: () => req('/api/process-insights/alerts'),
+
+  // Process Agents
+  getProcessAgents: () => req('/api/process-agents'),
+  getProcessAgentsByCase: (caseId) => req(`/api/process-agents/${caseId}`),
+
   // Categories & Batch
   getCategories:       () => req('/api/categories'),
   getCategoryPending:  (cat, limit = 5) => req(`/api/categories/${cat}/pending?limit=${limit}`),

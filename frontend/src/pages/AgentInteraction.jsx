@@ -4,6 +4,8 @@ import api from '../api';
 
 // Maximum characters shown in response preview before user expands the block
 const MAX_PREVIEW_LENGTH = 120;
+
+export default function AgentInteraction() {
   const [interactions, setInteractions] = useState([]);
   const [selected, setSelected] = useState(null);
   const [loading, setLoading] = useState(true);

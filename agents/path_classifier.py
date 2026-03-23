@@ -32,11 +32,8 @@ class PathClassifier:
         "Invoice Cleared",
     ]
 
-    # Cases with deviation_score below this are considered happy-path candidates.
-    # 0.3 represents a low overall deviation signal: path match >=60%, context
-    # deviation <30%, and vendor cycle within normal bounds.  Values above this
-    # indicate enough deviation to warrant the full exception pipeline.
-    DEVIATION_THRESHOLD = 0.3
+    # Terminal activities that indicate a successfully completed happy path case.
+    TERMINAL_ACTIVITIES = {"Invoice Cleared", "Payment Complete"}
 
     def classify(self, context, process_data: Optional[dict] = None) -> PathClassification:
         """
@@ -58,24 +55,37 @@ class PathClassifier:
         # 3. Vendor cycle time check
         vendor_ok, vendor_context = self._vendor_cycle_ok(context, process_data)
 
-        # 4. Blend into a single deviation score
+        # 4. Blend into a single deviation score (kept for informational purposes)
         deviation_score = round(
             (1.0 - path_score) * 0.4 + ctx_deviation * 0.4 + (0.0 if vendor_ok else 0.2),
             3,
         )
 
-        # 5. Classify
-        if deviation_score < self.DEVIATION_THRESHOLD and path_score >= 0.6 and vendor_ok:
+        # 5. Determine route based on terminal activity and path completeness.
+        # A case is happy_path only when the actual path ends with a recognised
+        # terminal activity AND all expected happy-path steps are present.
+        actual_terminal = (context.actual_path or [])[-1] if context.actual_path else ""
+        ends_at_terminal = actual_terminal in self.TERMINAL_ACTIVITIES
+        # Consider the path complete if all expected happy-path steps are
+        # present (the case may contain extra activities, which is fine).
+        all_steps_present = path_score >= 1.0
+
+        if ends_at_terminal and all_steps_present:
             route = "happy_path"
             reason = (
-                f"Path match {path_score:.0%}, deviation {deviation_score:.2f} below threshold, "
-                f"vendor cycle within bounds."
+                f"All {len(self.HAPPY_PATH_STEPS)} happy-path steps present. "
+                f"Terminal activity '{actual_terminal}' confirms successful completion."
             )
         else:
             route = "exception"
+            missing_reason = (
+                f"terminal activity '{actual_terminal}' not in expected set"
+                if not ends_at_terminal
+                else f"path match only {path_score:.0%}"
+            )
             reason = (
                 f"Path match {path_score:.0%}, deviation {deviation_score:.2f}, "
-                f"vendor cycle {'OK' if vendor_ok else 'exceeded'}."
+                f"{missing_reason}."
             )
 
         logger.info(
